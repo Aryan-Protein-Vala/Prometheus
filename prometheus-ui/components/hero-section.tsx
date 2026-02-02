@@ -213,7 +213,7 @@ export function HeroSection() {
               className="group mb-8 cursor-pointer border border-border bg-black/40 p-4 transition-all hover:border-foreground/30"
             >
               <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 font-mono text-sm overflow-x-auto">
+                <div className="flex items-center gap-3 font-mono text-sm overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
                   <Terminal className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                   <code className="text-foreground whitespace-nowrap">{platformData[selectedPlatform].command}</code>
                 </div>
