@@ -16,8 +16,10 @@ NC='\033[0m'
 VERSION="1.0.0"
 INSTALL_PATH="/usr/local/bin/prometheus"
 
-# GitHub Release URL
-GITHUB_URL="https://github.com/YOUR_USERNAME/prometheus/releases/latest/download"
+# GitHub Release URL - UPDATE THIS WITH YOUR ACTUAL RELEASE!
+# Format: https://github.com/USERNAME/REPO/releases/latest/download
+GITHUB_REPO="Aryan-Protein-Vala/Prometheus"
+GITHUB_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
 
 # ═══ MINIMAL PRINT FUNCTIONS ═══
 
@@ -96,33 +98,61 @@ main() {
     print_step "Downloading binary..."
     
     DOWNLOAD_URL="${GITHUB_URL}/${BINARY_NAME}"
-    TEMP_PATH="/tmp/prometheus-download"
+    TEMP_PATH="/tmp/prometheus-download-$$"
     
-    # Try download
+    DOWNLOAD_SUCCESS=false
+    
+    # Try download from GitHub
     if command -v curl &> /dev/null; then
-        curl -sSL -o "$TEMP_PATH" "$DOWNLOAD_URL" 2>/dev/null || {
-            # Fallback: check for local build (dev mode)
-            if [ -f "./target/release/prometheus" ]; then
-                cp "./target/release/prometheus" "$TEMP_PATH"
-                print_dim "Using local build (dev mode)"
-            else
-                print_error "Download failed"
-                print_dim "Check your internet connection or GitHub URL"
-                exit 1
+        HTTP_CODE=$(curl -sL -w "%{http_code}" -o "$TEMP_PATH" "$DOWNLOAD_URL" 2>/dev/null)
+        if [ "$HTTP_CODE" = "200" ] && [ -s "$TEMP_PATH" ]; then
+            # Verify it's not HTML (check for binary)
+            if ! head -c 20 "$TEMP_PATH" 2>/dev/null | grep -q "<!DOCTYPE\|<html\|Not Found"; then
+                DOWNLOAD_SUCCESS=true
+                print_dim "Downloaded from GitHub"
             fi
-        }
+        fi
     elif command -v wget &> /dev/null; then
-        wget -q -O "$TEMP_PATH" "$DOWNLOAD_URL" 2>/dev/null || {
-            if [ -f "./target/release/prometheus" ]; then
-                cp "./target/release/prometheus" "$TEMP_PATH"
-                print_dim "Using local build (dev mode)"
-            else
-                print_error "Download failed"
-                exit 1
+        if wget -q -O "$TEMP_PATH" "$DOWNLOAD_URL" 2>/dev/null; then
+            if ! head -c 20 "$TEMP_PATH" 2>/dev/null | grep -q "<!DOCTYPE\|<html\|Not Found"; then
+                DOWNLOAD_SUCCESS=true
+                print_dim "Downloaded from GitHub"
             fi
-        }
-    else
-        print_error "curl or wget required"
+        fi
+    fi
+    
+    # Fallback: Check for local build (dev mode)
+    if [ "$DOWNLOAD_SUCCESS" = false ]; then
+        rm -f "$TEMP_PATH" 2>/dev/null
+        
+        # Check common local paths
+        LOCAL_PATHS=(
+            "./target/release/prometheus"
+            "../prometheus-tui/target/release/prometheus"
+            "$HOME/Desktop/Prometheus/prometheus-tui/target/release/prometheus"
+        )
+        
+        for LOCAL_PATH in "${LOCAL_PATHS[@]}"; do
+            if [ -f "$LOCAL_PATH" ]; then
+                cp "$LOCAL_PATH" "$TEMP_PATH"
+                DOWNLOAD_SUCCESS=true
+                print_dim "Using local build (dev mode)"
+                break
+            fi
+        done
+    fi
+    
+    if [ "$DOWNLOAD_SUCCESS" = false ]; then
+        print_error "Download failed"
+        echo ""
+        print_dim "The binary is not yet available for download."
+        print_dim "Please build from source:"
+        echo ""
+        echo -e "${GRAY}    git clone https://github.com/${GITHUB_REPO}.git${NC}"
+        echo -e "${GRAY}    cd prometheus/prometheus-tui${NC}"
+        echo -e "${GRAY}    cargo build --release${NC}"
+        echo -e "${GRAY}    sudo cp target/release/prometheus /usr/local/bin/${NC}"
+        echo ""
         exit 1
     fi
 

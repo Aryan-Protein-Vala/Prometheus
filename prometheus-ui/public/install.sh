@@ -18,7 +18,7 @@ INSTALL_PATH="/usr/local/bin/prometheus"
 
 # GitHub Release URL - UPDATE THIS WITH YOUR ACTUAL RELEASE!
 # Format: https://github.com/USERNAME/REPO/releases/latest/download
-GITHUB_REPO="aryansharma24112003/prometheus"
+GITHUB_REPO="Aryan-Protein-Vala/Prometheus"
 GITHUB_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
 
 # ═══ MINIMAL PRINT FUNCTIONS ═══
