@@ -1621,6 +1621,8 @@ fn main() -> io::Result<()> {
                 let paths_to_delete = state.selected_paths.clone();
                 let total = paths_to_delete.len();
 
+                let mut successfully_deleted = std::collections::HashSet::new();
+
                 for (i, path) in paths_to_delete.iter().enumerate() {
                     state.delete_progress = (i + 1) as f64 / total as f64;
                     
@@ -1628,6 +1630,7 @@ fn main() -> io::Result<()> {
                         if let Err(e) = trash::delete(path) {
                             eprintln!("Failed to delete {:?}: {}", path, e);
                         } else {
+                            successfully_deleted.insert(path.clone());
                             for cat in &state.categories {
                                 for item in &cat.items {
                                     if &item.path == path {
@@ -1640,7 +1643,7 @@ fn main() -> io::Result<()> {
                 }
 
                 for cat in &mut state.categories {
-                    cat.items.retain(|item| !state.selected_paths.contains(&item.path));
+                    cat.items.retain(|item| !successfully_deleted.contains(&item.path));
                     cat.total_size = cat.items.iter().map(|i| i.size).sum();
                 }
                 state.categories.retain(|c| !c.items.is_empty());
