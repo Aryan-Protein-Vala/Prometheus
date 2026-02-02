@@ -94,6 +94,11 @@ pub fn save_license(license_key: &str, email: Option<String>) -> Result<(), Stri
 
 /// Verify a license key with Gumroad API
 pub fn verify_license(license_key: &str) -> Result<(bool, Option<String>), String> {
+    // Universal Demo Key for Testing
+    if license_key == "PROMETHEUS-DEMO-KEY" {
+        return Ok((true, Some("demo@prometheus.local".to_string())));
+    }
+
     // Product ID - can be set via env var or hardcoded
     let product_id = std::env::var("PROMETHEUS_PRODUCT_ID")
         .unwrap_or_else(|_| "PLACEHOLDER_PRODUCT_ID".to_string());
