@@ -246,6 +246,7 @@ struct AppState {
     license_input: String,
     license_status: LicenseStatus,
     license_message: String,
+    delete_error: Option<String>,
 }
 
 #[derive(PartialEq, Clone)]
@@ -275,6 +276,7 @@ impl AppState {
             license_input: String::new(),
             license_status: LicenseStatus::Checking,
             license_message: String::new(),
+            delete_error: None,
         }
     }
 
@@ -920,6 +922,60 @@ fn render_ui(frame: &mut ratatui::Frame, state: &AppState, home: &PathBuf) {
     }
     
     render_footer(frame, chunks[2], state);
+
+    if let Some(err) = &state.delete_error {
+        let area = frame.area();
+        let block = Block::default()
+            .title(Span::styled(" ⚠️ ERROR ", Style::default().fg(colors::ACCENT_RED).bold()))
+            .borders(Borders::ALL)
+            .style(Style::default().bg(colors::BG_DEEP));
+        
+        let rect = centered_rect(60, 20, area);
+        frame.render_widget(Clear, rect);
+        frame.render_widget(block, rect);
+
+        let inner = centered_rect_inner(rect);
+        let error_msg = Paragraph::new(vec![
+            Line::from("Deletion Failed for some items."),
+            Line::from(""),
+            Line::from(Span::styled(err, Style::default().fg(colors::ACCENT_RED))),
+            Line::from(""),
+            Line::from(Span::styled("Press [Esc] to dismiss", Style::default().fg(colors::TEXT_MUTED))),
+        ])
+        .alignment(Alignment::Center)
+        .wrap(ratatui::widgets::Wrap { trim: true });
+        
+        frame.render_widget(error_msg, inner);
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
+
+fn centered_rect_inner(r: Rect) -> Rect {
+    Rect {
+        x: r.x + 2,
+        y: r.y + 2,
+        width: r.width.saturating_sub(4),
+        height: r.height.saturating_sub(4),
+    }
 }
 
 fn render_header(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
@@ -1522,6 +1578,14 @@ fn main() -> io::Result<()> {
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
+                    // Handle Error Overlay
+                    if state.delete_error.is_some() {
+                        if key.code == KeyCode::Esc {
+                            state.delete_error = None;
+                        }
+                        continue;
+                    }
+
                     match state.view {
                         AppView::License => match key.code {
                             KeyCode::Esc => break,
@@ -1634,7 +1698,7 @@ fn main() -> io::Result<()> {
                     
                     if !is_protected(path, &home) {
                         if let Err(e) = trash::delete(path) {
-                            eprintln!("Failed to delete {:?}: {}", path, e);
+                            state.delete_error = Some(format!("Error: {}", e));
                         } else {
                             successfully_deleted.insert(path.clone());
                             for cat in &state.categories {
