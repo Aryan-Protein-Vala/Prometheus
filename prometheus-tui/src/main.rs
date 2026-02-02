@@ -1449,6 +1449,12 @@ fn main() -> io::Result<()> {
         original_hook(panic_info);
     }));
 
+    // Setup Ctrl+C Handler
+    ctrlc::set_handler(move || {
+        restore_terminal();
+        std::process::exit(0);
+    }).expect("Error setting Ctrl-C handler");
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
