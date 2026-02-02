@@ -1,33 +1,34 @@
-@echo off
-REM ═══════════════════════════════════════════════════════════════════════════
-REM  PROMETHEUS INSTALLER - Windows
-REM ═══════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
+#  🔥 PROMETHEUS INSTALLER - Windows (PowerShell)
+# ═══════════════════════════════════════════════════════════════════════════
 
-echo 🔥 Installing Prometheus...
+Write-Host "🔥 Installing Prometheus..." -ForegroundColor Cyan
 
-REM Check if binary exists
-if not exist "target\release\prometheus.exe" (
-    echo ⚙️  Building Prometheus...
-    cargo build --release
-)
+# Install Directory
+$InstallDir = "$env:USERPROFILE\.prometheus\bin"
+if (!(Test-Path -Path $InstallDir)) {
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+}
 
-REM Create install directory if it doesn't exist
-set INSTALL_DIR=%USERPROFILE%\.prometheus\bin
+# Placeholder for binary download (replace with actual URL)
+$BinaryUrl = "https://github.com/Aryan-Protein-Vala/Prometheus/releases/latest/download/prometheus-windows-x64.exe"
+$DestPath = "$InstallDir\prometheus.exe"
 
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+# Simulate Download (or implementation)
+# Invoke-WebRequest -Uri $BinaryUrl -OutFile $DestPath
 
-REM Copy binary
-echo 📦 Copying to %INSTALL_DIR%...
-copy /Y "target\release\prometheus.exe" "%INSTALL_DIR%\prometheus.exe"
+Write-Host "⚠️  Binary download not configured yet (Demo Mode)." -ForegroundColor Yellow
+Write-Host "📍  Install Path: $InstallDir" -ForegroundColor Gray
 
-REM Add to PATH (user level)
-echo 📍 Adding to PATH...
-setx PATH "%PATH%;%INSTALL_DIR%"
+# Add to PATH
+$UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($UserPath -notlike "*$InstallDir*") {
+    Write-Host "📍 Adding to PATH..." -ForegroundColor Cyan
+    [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", "User")
+}
 
-echo.
-echo ✅ Prometheus installed successfully!
-echo.
-echo    IMPORTANT: Restart your terminal, then run: prometheus
-echo.
-echo 🔥 Happy cleaning!
-pause
+Write-Host ""
+Write-Host "✅ Prometheus installed successfully!" -ForegroundColor Green
+Write-Host ""
+Write-Host "   Type 'prometheus' in a new terminal to start." -ForegroundColor Gray
+Write-Host ""

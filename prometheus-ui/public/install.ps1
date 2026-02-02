@@ -11,7 +11,7 @@ if (!(Test-Path -Path $InstallDir)) {
 }
 
 # Placeholder for binary download (replace with actual URL)
-$BinaryUrl = "https://github.com/YOUR_USERNAME/prometheus/releases/latest/download/prometheus-windows-x64.exe"
+$BinaryUrl = "https://github.com/Aryan-Protein-Vala/Prometheus/releases/latest/download/prometheus-windows-x64.exe"
 $DestPath = "$InstallDir\prometheus.exe"
 
 # Simulate Download (or implementation)
