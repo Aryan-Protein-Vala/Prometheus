@@ -14,11 +14,10 @@ if (!(Test-Path -Path $InstallDir)) {
 $BinaryUrl = "https://github.com/Aryan-Protein-Vala/Prometheus/releases/latest/download/prometheus-windows-x64.exe"
 $DestPath = "$InstallDir\prometheus.exe"
 
-# Simulate Download (or implementation)
-# Invoke-WebRequest -Uri $BinaryUrl -OutFile $DestPath
+# Download Binary
+Write-Host "⬇️  Downloading Prometheus..." -ForegroundColor Cyan
+Invoke-WebRequest -Uri $BinaryUrl -OutFile $DestPath
 
-Write-Host "⚠️  Binary download not configured yet (Demo Mode)." -ForegroundColor Yellow
-Write-Host "📍  Install Path: $InstallDir" -ForegroundColor Gray
 
 # Add to PATH
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
