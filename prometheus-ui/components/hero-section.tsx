@@ -123,7 +123,7 @@ export function HeroSection() {
 
       {/* Subhead */}
       <p className="mb-12 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
-        <FadeInText text="The first 100% offline terminal cleaner. Zero data leaves your device." delay={600} />
+        <FadeInText text="The 100% offline terminal cleaner. Zero data leaves your device." delay={600} />
       </p>
 
       {/* Platform Selection */}

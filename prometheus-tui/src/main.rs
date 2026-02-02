@@ -1661,7 +1661,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    }
+
 
     restore_terminal();
 

@@ -10,7 +10,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Prometheus Cleaner | Your OS. Surgically Clean.",
   description:
-    "The first 100% offline AI file architect. Zero data leaves your device. Neural-powered file organization for the privacy-obsessed.",
+    "The 100% offline AI file architect. Zero data leaves your device. Neural-powered file organization for the privacy-obsessed.",
   generator: "Prometheus Systems",
   icons: {
     icon: "/icon.svg",

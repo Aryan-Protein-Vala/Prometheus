@@ -4,6 +4,9 @@
 
 Write-Host "🔥 Installing Prometheus..." -ForegroundColor Cyan
 
+# Force TLS 1.2 for GitHub downloads
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 # Install Directory
 $InstallDir = "$env:USERPROFILE\.prometheus\bin"
 if (!(Test-Path -Path $InstallDir)) {
