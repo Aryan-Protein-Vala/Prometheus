@@ -1698,7 +1698,18 @@ fn main() -> io::Result<()> {
                     
                     if !is_protected(path, &home) {
                         if let Err(e) = trash::delete(path) {
-                            state.delete_error = Some(format!("Error: {}", e));
+                            // Try forceful permanent clean (Bypass Trash)
+                            let force_res = if path.is_dir() {
+                                std::fs::remove_dir_all(path)
+                            } else {
+                                std::fs::remove_file(path)
+                            };
+
+                            if let Err(e2) = force_res {
+                                state.delete_error = Some(format!("Trash failed: {}\nForce clean failed: {}", e, e2));
+                            } else {
+                                successfully_deleted.insert(path.clone());
+                            }
                         } else {
                             successfully_deleted.insert(path.clone());
                             for cat in &state.categories {
