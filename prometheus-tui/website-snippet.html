@@ -1,0 +1,93 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PROMETHEUS - Magic Install Command
+     Copy this into your landing page
+═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Install Command Block -->
+<div class="w-full max-w-2xl mx-auto my-12">
+
+    <!-- The Code Block -->
+    <div class="relative group">
+        <div
+            class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-lg blur opacity-30 group-hover:opacity-50 transition duration-300">
+        </div>
+
+        <div class="relative bg-gray-900 rounded-lg border border-gray-700/50">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2 border-b border-gray-700/50">
+                <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                </div>
+                <span class="text-xs text-gray-500 font-mono">Terminal</span>
+            </div>
+
+            <!-- Code -->
+            <div class="px-4 py-4 flex items-center justify-between">
+                <code id="installCommand" class="text-cyan-400 font-mono text-sm md:text-base">
+                    curl -sL https://prometheus.sh/install | bash
+                </code>
+
+                <!-- Copy Button -->
+                <button onclick="copyInstallCommand()"
+                    class="ml-4 px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-md text-cyan-400 text-sm font-medium transition-all duration-200 flex items-center gap-2">
+                    <svg id="copyIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    <svg id="checkIcon" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <span id="copyText">Copy</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Honor System Explanation -->
+    <div class="mt-8 text-center space-y-4">
+        <p class="text-gray-400 text-sm">
+            <span class="text-cyan-400 font-semibold">Free:</span> Build from source on
+            <a href="https://github.com/YOUR_USERNAME/prometheus" class="text-cyan-400 hover:underline">GitHub</a>
+        </p>
+        <p class="text-gray-400 text-sm">
+            <span class="text-green-400 font-semibold">$9:</span> Download the pre-built binary & support indie dev
+        </p>
+        <a href="https://your-gumroad-link.com"
+            class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-full text-white font-semibold transition-all duration-300 shadow-lg shadow-cyan-500/25">
+            <span>🔥</span>
+            Get Prometheus
+        </a>
+    </div>
+</div>
+
+<script>
+    function copyInstallCommand() {
+        const command = document.getElementById('installCommand').textContent.trim();
+        navigator.clipboard.writeText(command).then(() => {
+            // Show success
+            document.getElementById('copyIcon').classList.add('hidden');
+            document.getElementById('checkIcon').classList.remove('hidden');
+            document.getElementById('copyText').textContent = 'Copied!';
+
+            // Reset after 2 seconds
+            setTimeout(() => {
+                document.getElementById('copyIcon').classList.remove('hidden');
+                document.getElementById('checkIcon').classList.add('hidden');
+                document.getElementById('copyText').textContent = 'Copy';
+            }, 2000);
+        });
+    }
+</script>
+
+<!-- 
+═══════════════════════════════════════════════════════════════════════════
+USAGE NOTES:
+- This uses Tailwind CSS classes
+- Replace YOUR_USERNAME with your GitHub username
+- Replace https://your-gumroad-link.com with your Gumroad product URL
+- Replace https://prometheus.sh/install with your actual install script URL
+═══════════════════════════════════════════════════════════════════════════
+-->
