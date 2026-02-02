@@ -1429,7 +1429,26 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
 //                              M A I N   L O O P
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let _ = execute!(
+        io::stdout(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    );
+    let _ = execute!(io::stdout(), crossterm::cursor::Show);
+}
+
 fn main() -> io::Result<()> {
+    // Setup Panic Hook to restore terminal on crash
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        restore_terminal();
+        original_hook(panic_info);
+    }));
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -1642,13 +1661,9 @@ fn main() -> io::Result<()> {
         }
     }
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    }
+
+    restore_terminal();
 
     Ok(())
 }
