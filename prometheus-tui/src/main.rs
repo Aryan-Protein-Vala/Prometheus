@@ -1495,7 +1495,15 @@ fn smart_delete(path: &Path) -> Result<(), String> {
     let abs_path = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
 
     // 2. Try to move to Trash
-    trash::delete(&abs_path).map_err(|e| e.to_string())
+    if trash::delete(&abs_path).is_err() {
+        // 3. Fallback: Force Delete (The Mean Way) - only if Trash failed
+        if abs_path.is_dir() {
+            std::fs::remove_dir_all(&abs_path).map_err(|e| format!("Force delete failed: {}", e))?;
+        } else {
+            std::fs::remove_file(&abs_path).map_err(|e| format!("Force delete failed: {}", e))?;
+        }
+    }
+    Ok(())
 }
 
 fn restore_terminal() {
@@ -1710,8 +1718,6 @@ fn main() -> io::Result<()> {
                     if !is_protected(path, &home) {
                         if let Err(e) = smart_delete(path) {
                             state.delete_error = Some(format!("Error: {}", e));
-                        } else {
-                            successfully_deleted.insert(path.clone());
                         } else {
                             successfully_deleted.insert(path.clone());
                             for cat in &state.categories {
