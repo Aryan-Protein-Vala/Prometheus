@@ -120,6 +120,7 @@ mod colors {
     pub const ACCENT_YELLOW: Color = ACCENT_WARNING;
     pub const ACCENT_PURPLE: Color = Color::Rgb(160, 140, 200);
     pub const ACCENT_ORANGE: Color = Color::Rgb(200, 150, 100);
+    pub const ACCENT_BLUE: Color = Color::Rgb(100, 150, 200);   // Added for Package Managers
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
