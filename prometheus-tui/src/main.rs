@@ -1487,6 +1487,17 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Smart Delete - Handles Canonicalization for Windows
+/// Returns Ok if trashed, Err if failed.
+/// NOTE: Deliberately does NOT implement force delete (Safety First).
+fn smart_delete(path: &Path) -> Result<(), String> {
+    // 1. Solve the Windows Path Issue (Get Absolute Path)
+    let abs_path = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
+
+    // 2. Try to move to Trash
+    trash::delete(&abs_path).map_err(|e| e.to_string())
+}
+
 fn restore_terminal() {
     let _ = disable_raw_mode();
     let _ = execute!(
@@ -1697,7 +1708,7 @@ fn main() -> io::Result<()> {
                     state.delete_progress = (i + 1) as f64 / total as f64;
                     
                     if !is_protected(path, &home) {
-                        if let Err(e) = trash::delete(path) {
+                        if let Err(e) = smart_delete(path) {
                             state.delete_error = Some(format!("Error: {}", e));
                         } else {
                             successfully_deleted.insert(path.clone());
