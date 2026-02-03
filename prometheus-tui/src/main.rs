@@ -1238,7 +1238,7 @@ fn render_license(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
         }
         LicenseStatus::InputRequired => {
             lines.push(Line::from(Span::styled(
-                "Enter Gumroad License Key:",
+                "Enter the Licence Key:",
                 Style::default().fg(colors::TEXT_PRIMARY),
             )));
             lines.push(Line::from(""));
