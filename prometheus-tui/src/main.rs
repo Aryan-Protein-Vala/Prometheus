@@ -132,6 +132,7 @@ enum JunkCategory {
     BrowserBloat,    // Chrome, Firefox, Safari, Brave, Edge
     UserHoarding,    // Old downloads, screenshots, mail downloads
     PackageManagers, // Homebrew, pip, npm, chocolatey
+    DeveloperJunk,   // node_modules, target, xcode, docker
     LargeFiles,      // Files > 500MB
 }
 
@@ -142,6 +143,7 @@ impl JunkCategory {
             JunkCategory::BrowserBloat => "Browser Bloat",
             JunkCategory::UserHoarding => "User Hoarding",
             JunkCategory::PackageManagers => "Package Managers",
+            JunkCategory::DeveloperJunk => "Developer Junk",
             JunkCategory::LargeFiles => "Large Files (500MB+)",
         }
     }
@@ -152,6 +154,7 @@ impl JunkCategory {
             JunkCategory::BrowserBloat => "🌐",
             JunkCategory::UserHoarding => "📥",
             JunkCategory::PackageManagers => "📦",
+            JunkCategory::DeveloperJunk => "🛠️",
             JunkCategory::LargeFiles => "💾",
         }
     }
@@ -161,8 +164,9 @@ impl JunkCategory {
             JunkCategory::SystemJunk => colors::ACCENT_RED,
             JunkCategory::BrowserBloat => colors::ACCENT_PURPLE,
             JunkCategory::UserHoarding => colors::ACCENT_YELLOW,
-            JunkCategory::PackageManagers => colors::ACCENT_CYAN,
-            JunkCategory::LargeFiles => colors::ACCENT_ORANGE,
+            JunkCategory::PackageManagers => colors::ACCENT_BLUE,
+            JunkCategory::DeveloperJunk => Color::Magenta,
+            JunkCategory::LargeFiles => colors::ACCENT_RED,
         }
     }
 }
@@ -858,6 +862,9 @@ fn start_threaded_scan(home: PathBuf) -> mpsc::Receiver<ScanMessage> {
         
         let large_files = scan_large_files(&home, &tx);
         let _ = tx.send(ScanMessage::CategoryDone(large_files));
+
+        let dev_junk = scan_developer_junk(&home, &tx);
+        let _ = tx.send(ScanMessage::CategoryDone(dev_junk));
         
         let _ = tx.send(ScanMessage::Complete);
     });
