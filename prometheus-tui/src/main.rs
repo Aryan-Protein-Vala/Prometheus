@@ -38,7 +38,6 @@ const PROTECTED_PATHS: &[&str] = &[
     "Library/Keychains", "Library/Preferences", "Library/Safari/Bookmarks.plist",
     "Library/Mail", "Library/Messages", "Library/Calendars", "Library/Notes",
     ".config", ".local/share", ".vim", ".vimrc", ".zsh_history",
-    "Desktop", "Documents", "Pictures", "Movies", "Music", "Downloads",
 ];
 
 #[cfg(target_os = "windows")]
@@ -46,8 +45,8 @@ const PROTECTED_PATHS: &[&str] = &[
     ".ssh", ".gnupg", ".aws", ".kube", ".docker/config.json", ".gitconfig",
     "AppData/Roaming/Microsoft", "AppData/Local/Microsoft",
     "AppData/Roaming/Code/User/settings.json",
-    "NTUSER.DAT", ".config", ".vim",
-    "Desktop", "Documents", "Pictures", "Videos", "Music", "Downloads",
+    "NTUSER.DAT", ".config", ".vim", ".zsh_history",
+    "Windows", "Program Files", "Program Files (x86)",
 ];
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -247,6 +246,15 @@ struct AppState {
     license_status: LicenseStatus,
     license_message: String,
     delete_error: Option<String>,
+    deletion_report: Option<DeletionReport>,
+}
+
+#[derive(Clone, Debug)]
+struct DeletionReport {
+    deleted: usize,
+    failed: usize,
+    protected: usize,
+    errors: Vec<String>,
 }
 
 #[derive(PartialEq, Clone)]
@@ -277,6 +285,7 @@ impl AppState {
             license_status: LicenseStatus::Checking,
             license_message: String::new(),
             delete_error: None,
+            deletion_report: None,
         }
     }
 
@@ -923,6 +932,7 @@ fn render_ui(frame: &mut ratatui::Frame, state: &AppState, home: &PathBuf) {
     
     render_footer(frame, chunks[2], state);
 
+    // Error Overlay
     if let Some(err) = &state.delete_error {
         let area = frame.area();
         let block = Block::default()
@@ -946,6 +956,51 @@ fn render_ui(frame: &mut ratatui::Frame, state: &AppState, home: &PathBuf) {
         .wrap(ratatui::widgets::Wrap { trim: true });
         
         frame.render_widget(error_msg, inner);
+    }
+
+    // Deletion Report Overlay
+    if let Some(report) = &state.deletion_report {
+        let area = frame.area();
+        let block = Block::default()
+            .title(Span::styled(" 🧾 DELETION REPORT ", Style::default().fg(colors::ACCENT_CYAN).bold()))
+            .borders(Borders::ALL)
+            .style(Style::default().bg(colors::BG_DEEP));
+        
+        let rect = centered_rect(60, 40, area);
+        frame.render_widget(Clear, rect);
+        frame.render_widget(block, rect);
+
+        let inner = centered_rect_inner(rect);
+        
+        let mut lines = vec![
+            Line::from(vec![
+                Span::styled("Deleted: ", Style::default().fg(colors::TEXT_MUTED)),
+                Span::styled(format!("{} items", report.deleted), Style::default().fg(colors::ACCENT_GREEN).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled("Failed: ", Style::default().fg(colors::TEXT_MUTED)),
+                Span::styled(format!("{} items", report.failed), Style::default().fg(colors::ACCENT_RED).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled("Protected: ", Style::default().fg(colors::TEXT_MUTED)),
+                Span::styled(format!("{} items", report.protected), Style::default().fg(colors::ACCENT_YELLOW).bold()),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled("Details:", Style::default().fg(colors::TEXT_PRIMARY))),
+        ];
+
+        for err in report.errors.iter().take(5) {
+            lines.push(Line::from(Span::styled(format!(" • {}", err), Style::default().fg(colors::TEXT_MUTED))));
+        }
+        if report.errors.len() > 5 {
+             lines.push(Line::from(Span::styled(format!("   ...and {} more", report.errors.len() - 5), Style::default().fg(colors::TEXT_MUTED))));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled("Press [Esc] to dismiss", Style::default().fg(colors::TEXT_MUTED))));
+
+        let content = Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: true });
+        frame.render_widget(content, inner);
     }
 }
 
@@ -1604,6 +1659,14 @@ fn main() -> io::Result<()> {
                         }
                         continue;
                     }
+                    
+                    // Handle Deletion Report Overlay
+                    if state.deletion_report.is_some() {
+                        if key.code == KeyCode::Esc {
+                            state.deletion_report = None;
+                        }
+                        continue;
+                    }
 
                     match state.view {
                         AppView::License => match key.code {
@@ -1710,15 +1773,24 @@ fn main() -> io::Result<()> {
                 let paths_to_delete = state.selected_paths.clone();
                 let total = paths_to_delete.len();
 
-                let mut successfully_deleted = std::collections::HashSet::new();
+                let mut report = DeletionReport {
+                    deleted: 0,
+                    failed: 0,
+                    protected: 0,
+                    errors: Vec::new(),
+                };
 
                 for (i, path) in paths_to_delete.iter().enumerate() {
                     state.delete_progress = (i + 1) as f64 / total as f64;
                     
                     if !is_protected(path, &home) {
                         if let Err(e) = smart_delete(path) {
-                            state.delete_error = Some(format!("Error: {}", e));
+                            report.failed += 1;
+                            if report.errors.len() < 3 {
+                                report.errors.push(format!("{}: {}", path.file_name().unwrap_or_default().to_string_lossy(), e));
+                            }
                         } else {
+                            report.deleted += 1;
                             successfully_deleted.insert(path.clone());
                             for cat in &state.categories {
                                 for item in &cat.items {
@@ -1728,7 +1800,13 @@ fn main() -> io::Result<()> {
                                 }
                             }
                         }
+                    } else {
+                        report.protected += 1;
                     }
+                }
+
+                if report.failed > 0 || report.protected > 0 {
+                    state.deletion_report = Some(report);
                 }
 
                 for cat in &mut state.categories {
