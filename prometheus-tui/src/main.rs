@@ -842,6 +842,128 @@ fn scan_large_files(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode
     cat
 }
 
+// ═══ CATEGORY F: DEVELOPER JUNK (DEEP CLEAN) ═══
+
+fn scan_developer_junk(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
+    let mut cat = CategoryNode::new(JunkCategory::DeveloperJunk);
+    let _ = tx.send(ScanMessage::Progress("Scanning developer caches & projects...".to_string()));
+
+    // PART 1: STATIC PATHS (IDE Caches, etc)
+    let sep = std::path::MAIN_SEPARATOR;
+    let mut static_paths = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        static_paths.push((home.join("Library/Application Support/Code/Cache"), "VS Code Cache"));
+        static_paths.push((home.join("Library/Application Support/Code/CachedData"), "VS Code Cached Data"));
+        static_paths.push((home.join("Library/Caches/com.microsoft.VSCode"), "VS Code Cache"));
+        static_paths.push((home.join(".vscode/extensions"), "Old Extensions"));
+        static_paths.push((home.join("Library/Application Support/JetBrains"), "JetBrains Cache"));
+        static_paths.push((home.join("Library/Caches/JetBrains"), "JetBrains Cache"));
+        static_paths.push((home.join("Library/Containers/com.docker.docker"), "Docker Data"));
+        static_paths.push((home.join(".docker"), "Docker Config"));
+        static_paths.push((home.join("Library/Developer/Xcode/DerivedData"), "Xcode DerivedData"));
+        static_paths.push((home.join("Library/Developer/Xcode/Archives"), "Xcode Archives"));
+        static_paths.push((home.join("Library/Developer/CoreSimulator/Caches"), "iOS Simulator Cache"));
+        static_paths.push((home.join(".cursor"), "Cursor AI Cache"));
+        static_paths.push((home.join("Cursor/User/workspaceStorage"), "Cursor Workspace Storage"));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        static_paths.push((home.join("AppData/Roaming/Code/Cache"), "VS Code Cache"));
+        static_paths.push((home.join("AppData/Roaming/Code/CachedData"), "VS Code Cached Data"));
+        static_paths.push((home.join(".vscode/extensions"), "Old Extensions"));
+        static_paths.push((home.join("AppData/Local/JetBrains"), "JetBrains Cache"));
+        static_paths.push((home.join("AppData/Local/Docker"), "Docker Data"));
+        static_paths.push((home.join(".docker"), "Docker Config"));
+        static_paths.push((home.join(".cursor"), "Cursor AI Cache"));
+        static_paths.push((home.join("AppData/Local/Android/Sdk/system-images"), "Android Emulator Images"));
+    }
+
+    // Common paths
+    static_paths.push((home.join(".m2/repository"), "Maven Repository"));
+    static_paths.push((home.join(".gradle/caches"), "Gradle Caches"));
+    static_paths.push((home.join(".rustup/toolchains"), "Rust Toolchains (Unused?)")); 
+
+    for (path, label) in static_paths {
+        if path.exists() {
+             let size = get_dir_size(&path);
+             if size > 1_000_000 { // > 1MB
+                 cat.add_item(JunkItem {
+                     path,
+                     size,
+                     junk_type: label.to_string(),
+                 });
+             }
+        }
+    }
+
+    // PART 2: RECURSIVE PROJECT SCAN
+    // Recursively find: node_modules, target, .next, dist, build, .gradle, .maven
+    let _ = tx.send(ScanMessage::Progress("Deep scanning for project bloat (node_modules, target)...".to_string()));
+    
+    // Limits
+    let max_depth = 6; 
+    let skip_folders = ["Library", "Music", "Pictures", "Movies", "Downloads", "Public", "Applications", "Windows", "Program Files", "System", "Users"];
+    
+    let walker = WalkDir::new(home)
+        .max_depth(max_depth)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            
+            // Optimization: Skip massive/irrelevant folders
+            if name.starts_with('.') && name != ".config" { 
+                // Skip most hidden folders, but allowed ones will be caught in main loop if needed
+                if name == ".cargo" || name == ".rustup" || name == ".git" { return false; }
+            }
+
+            if skip_folders.contains(&name.as_ref()) {
+                return false;
+            }
+            true
+        });
+
+    for entry in walker.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_dir() { continue; }
+        
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+
+        // Targets to destroy
+        let is_junk = match name.as_ref() {
+            "node_modules" => true,
+            "target" => path.parent().map(|p| p.join("Cargo.toml").exists()).unwrap_or(false), // Rust
+            ".next" => true, // Next.js
+            ".nuxt" => true, // Nuxt
+            ".gradle" => true, // Gradle
+            "dist" => path.parent().map(|p| p.join("package.json").exists()).unwrap_or(false), // JS Dist
+            "build" => path.parent().map(|p| p.join("package.json").exists()).unwrap_or(false), // JS Build - risky?
+            "__pycache__" => true, // Python
+            ".pytest_cache" => true, // Python
+            "venv" | ".venv" | "env" => path.parent().map(|p| p.join("requirements.txt").exists() || p.join("pyproject.toml").exists()).unwrap_or(false),
+            _ => false
+        };
+
+        if is_junk && !is_protected(path, home) {
+             let _ = tx.send(ScanMessage::Progress(format!("Found project junk: {}", name)));
+             let size = get_dir_size(path);
+             if size > 10_000_000 { // > 10MB to reduce noise
+                 cat.add_item(JunkItem {
+                     path: path.to_path_buf(),
+                     size,
+                     junk_type: format!("Project Artifact ({})", name),
+                 });
+             }
+        }
+    }
+
+    cat.items.sort_by(|a, b| b.size.cmp(&a.size));
+    cat
+}
+
 // ═══ MAIN SCANNER (THREADED) ═══
 
 fn start_threaded_scan(home: PathBuf) -> mpsc::Receiver<ScanMessage> {
