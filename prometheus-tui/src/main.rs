@@ -1779,6 +1779,7 @@ fn main() -> io::Result<()> {
                     protected: 0,
                     errors: Vec::new(),
                 };
+                let mut successfully_deleted = std::collections::HashSet::new();
 
                 for (i, path) in paths_to_delete.iter().enumerate() {
                     state.delete_progress = (i + 1) as f64 / total as f64;
