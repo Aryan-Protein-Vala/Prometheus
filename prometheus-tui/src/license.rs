@@ -62,7 +62,7 @@ pub struct StoredLicense {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Website API endpoint for license verification
-const WEBSITE_API_URL: &str = "https://prometheusapp.vercel.app/api/verify-license";
+const WEBSITE_API_URL: &str = "https://prometheus-cleaner.vercel.app/api/verify-license";
 
 /// Gumroad product ID (set via env var or use placeholder)
 fn get_gumroad_product_id() -> String {

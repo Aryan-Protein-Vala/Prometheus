@@ -26,8 +26,9 @@ const LICENSE_PREFIX = 'license:';
 
 // Check if key is a valid format
 function isValidKeyFormat(key: string): boolean {
-  // PROM-XXXXX-XXXX format
-  return /^PROM-[A-Z0-9]+-[A-Z0-9]+$/.test(key);
+  // PROM-XXXX-XXXX-XXXX-XXXX-XX format (from free-license)
+  // or PROM-XXXXX-XXXX format (legacy)
+  return /^PROM-[A-Z0-9-]+$/.test(key) && key.length >= 10;
 }
 
 export async function GET(request: NextRequest) {
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     // Validate admin secret
     const ADMIN_SECRET = process.env.LICENSE_ADMIN_SECRET || 'prometheus-admin-secret';
-    
+
     if (secret !== ADMIN_SECRET) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
