@@ -107,6 +107,9 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                     color: '#000000'
                 },
                 handler: async (response: any) => {
+                    // CRITICAL: Force our dialog to stay open/reopen
+                    setInternalOpen(true)
+                    
                     // Step 3: Verify payment - This is called ONLY on successful payment
                     console.log('Payment successful, verifying:', response)
                     setStep('processing')
@@ -127,14 +130,16 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                         console.log('Verify response:', verifyData)
 
                         if (verifyData.success && verifyData.licenseKey) {
-                            // Force state updates to happen
+                            console.log('Setting license key and success step')
+                            // Set license key first
                             setLicenseKey(verifyData.licenseKey)
-                            // Use setTimeout to ensure React processes the state update
-                            setTimeout(() => {
-                                setStep('success')
-                                // Unlock body scroll
-                                document.body.style.overflow = ''
-                            }, 100)
+                            // Force dialog open again
+                            setInternalOpen(true)
+                            // Set step to success
+                            setStep('success')
+                            // Unlock body scroll
+                            document.body.style.overflow = ''
+                            document.body.style.pointerEvents = ''
                         } else {
                             throw new Error(verifyData.error || 'Payment verification failed')
                         }
@@ -142,7 +147,9 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                         console.error('Verify error:', verifyError)
                         setError(verifyError.message)
                         setStep('payment')
+                        setInternalOpen(true)
                         document.body.style.overflow = ''
+                        document.body.style.pointerEvents = ''
                     }
                 },
                 modal: {
