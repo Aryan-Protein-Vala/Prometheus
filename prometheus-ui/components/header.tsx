@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { PaymentModal } from "@/components/payment-modal"
+import { FreeLicenseModal } from "@/components/free-license-modal"
 
 export function Header() {
-    const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+    const [licenseModalOpen, setLicenseModalOpen] = useState(false)
 
     return (
         <>
@@ -27,16 +27,17 @@ export function Header() {
                         </a>
 
                         <button
-                            onClick={() => setPaymentModalOpen(true)}
+                            onClick={() => setLicenseModalOpen(true)}
                             className="px-4 py-2 text-xs font-medium tracking-wide bg-foreground text-background hover:bg-foreground/90 transition-all duration-200"
                         >
-                            Get Licence
+                            Get Free
                         </button>
                     </div>
                 </nav>
             </header>
 
-            <PaymentModal open={paymentModalOpen} onOpenChange={setPaymentModalOpen} />
+            <FreeLicenseModal open={licenseModalOpen} onOpenChange={setLicenseModalOpen} />
         </>
     )
 }
+
