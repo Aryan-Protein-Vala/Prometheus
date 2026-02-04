@@ -186,6 +186,11 @@ main() {
     # Cleanup
     rm -f "$TEMP_PATH" 2>/dev/null
 
+    # Reset terminal to fix any lingering mouse tracking from previous runs
+    stty sane 2>/dev/null || true
+    printf '\033[?1000l\033[?1002l\033[?1003l\033[?1006l' 2>/dev/null || true
+    tput reset 2>/dev/null || true
+
     # Success
     echo ""
     echo -e "${GRAY}  ─────────────────────────────────────${NC}"
