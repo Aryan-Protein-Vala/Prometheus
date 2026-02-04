@@ -1,3 +1,4 @@
+import { Header } from "@/components/header"
 import { HeroSection } from "@/components/hero-section"
 import { ProblemStrip } from "@/components/problem-strip"
 import { CoreEngines } from "@/components/core-engines"
@@ -9,6 +10,7 @@ export default function Home() {
   return (
     <main className="relative min-h-screen bg-background">
       <div className="grain-overlay" />
+      <Header />
       <HeroSection />
       <ProblemStrip />
       <CoreEngines />

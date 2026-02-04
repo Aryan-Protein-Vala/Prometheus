@@ -132,45 +132,45 @@ export function HeroSection() {
           Download
         </p>
 
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           {/* macOS */}
           <button
             onClick={() => setSelectedPlatform("mac")}
-            className="cursor-pointer px-5 py-2.5 text-sm font-medium tracking-wide text-muted-foreground border border-border/50 bg-transparent transition-all duration-300 hover:border-foreground/30 hover:text-foreground hover:bg-foreground/5 hover:scale-[1.02] active:scale-[0.98]"
+            className="cursor-pointer px-4 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-medium tracking-wide text-muted-foreground border border-border/50 bg-transparent transition-all duration-300 hover:border-foreground/30 hover:text-foreground hover:bg-foreground/5 hover:scale-[1.02] active:scale-[0.98]"
           >
             Mac
           </button>
 
-          <span className="text-muted-foreground/30 mx-1 select-none">/</span>
+          <span className="text-muted-foreground/30 mx-1 select-none hidden sm:inline">/</span>
 
           {/* Windows */}
           <button
             onClick={() => setSelectedPlatform("windows")}
-            className="cursor-pointer px-5 py-2.5 text-sm font-medium tracking-wide text-muted-foreground border border-border/50 bg-transparent transition-all duration-300 hover:border-foreground/30 hover:text-foreground hover:bg-foreground/5 hover:scale-[1.02] active:scale-[0.98]"
+            className="cursor-pointer px-4 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-medium tracking-wide text-muted-foreground border border-border/50 bg-transparent transition-all duration-300 hover:border-foreground/30 hover:text-foreground hover:bg-foreground/5 hover:scale-[1.02] active:scale-[0.98]"
           >
             Windows
           </button>
 
-          <span className="text-muted-foreground/30 mx-1 select-none">/</span>
+          <span className="text-muted-foreground/30 mx-1 select-none hidden sm:inline">/</span>
 
           {/* Linux */}
           <button
             onClick={() => setSelectedPlatform("linux")}
-            className="cursor-pointer px-5 py-2.5 text-sm font-medium tracking-wide text-muted-foreground border border-border/50 bg-transparent transition-all duration-300 hover:border-foreground/30 hover:text-foreground hover:bg-foreground/5 hover:scale-[1.02] active:scale-[0.98]"
+            className="cursor-pointer px-4 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-medium tracking-wide text-muted-foreground border border-border/50 bg-transparent transition-all duration-300 hover:border-foreground/30 hover:text-foreground hover:bg-foreground/5 hover:scale-[1.02] active:scale-[0.98]"
           >
             Linux
           </button>
         </div>
 
         {/* Secondary Links */}
-        <div className="mt-6 flex items-center justify-center gap-4 text-sm">
+        <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-xs sm:text-sm">
           <a
             href="#pricing"
             className="text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
           >
             Buy Licence Key
           </a>
-          <span className="text-muted-foreground/30">•</span>
+          <span className="text-muted-foreground/30 hidden sm:inline">•</span>
           <a
             href="https://github.com/Aryan-Protein-Vala/Prometheus"
             target="_blank"
@@ -182,8 +182,8 @@ export function HeroSection() {
         </div>
       </div>
 
-      {/* Scroll indicator */}
-      <div className="absolute bottom-12 flex flex-col items-center gap-2">
+      {/* Scroll indicator - hidden on mobile */}
+      <div className="absolute bottom-8 md:bottom-12 hidden md:flex flex-col items-center gap-2">
         <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Scroll</span>
         <div className="h-12 w-px bg-gradient-to-b from-muted-foreground/50 to-transparent" />
       </div>
