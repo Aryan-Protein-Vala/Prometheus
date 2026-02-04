@@ -26,6 +26,33 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
     const [licenseKey, setLicenseKey] = useState('')
     const [error, setError] = useState('')
     const [copied, setCopied] = useState(false)
+    // Internal open state to prevent parent from closing us during payment
+    const [internalOpen, setInternalOpen] = useState(false)
+
+    // Sync internal state with parent
+    useEffect(() => {
+        if (open) {
+            setInternalOpen(true)
+        }
+    }, [open])
+
+    // Handle dialog close - prevent closing during processing/success
+    const handleOpenChange = (newOpen: boolean) => {
+        // Don't allow closing during processing
+        if (step === 'processing') {
+            return
+        }
+        // If we have a license key, show it before closing
+        if (step === 'success' && licenseKey && !newOpen) {
+            // Allow close but reset
+            resetModal()
+            return
+        }
+        setInternalOpen(newOpen)
+        if (!newOpen) {
+            onOpenChange(false)
+        }
+    }
 
     // Load Razorpay script
     useEffect(() => {
@@ -161,7 +188,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
     }
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={internalOpen} onOpenChange={handleOpenChange}>
             <DialogContent className="sm:max-w-md bg-card border-border max-h-[90vh] overflow-y-auto">
                 {step === 'email' && (
                     <>
