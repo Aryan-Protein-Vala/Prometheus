@@ -99,9 +99,15 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                         const verifyData = await verifyResponse.json()
                         console.log('Verify response:', verifyData)
 
-                        if (verifyData.success) {
+                        if (verifyData.success && verifyData.licenseKey) {
+                            // Force state updates to happen
                             setLicenseKey(verifyData.licenseKey)
-                            setStep('success')
+                            // Use setTimeout to ensure React processes the state update
+                            setTimeout(() => {
+                                setStep('success')
+                                // Unlock body scroll
+                                document.body.style.overflow = ''
+                            }, 100)
                         } else {
                             throw new Error(verifyData.error || 'Payment verification failed')
                         }
@@ -109,6 +115,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                         console.error('Verify error:', verifyError)
                         setError(verifyError.message)
                         setStep('payment')
+                        document.body.style.overflow = ''
                     }
                 },
                 modal: {
@@ -120,14 +127,14 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
             }
 
             const razorpay = new window.Razorpay(options)
-            
+
             // Handle payment failures (like the 500 error you're seeing)
             razorpay.on('payment.failed', (response: any) => {
                 console.error('Payment failed:', response.error)
                 setError(`Payment failed: ${response.error.description || response.error.reason || 'Unknown error'}`)
                 setIsLoading(false)
             })
-            
+
             razorpay.open()
             setIsLoading(false)
 
@@ -155,7 +162,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md bg-card border-border">
+            <DialogContent className="sm:max-w-md bg-card border-border max-h-[90vh] overflow-y-auto">
                 {step === 'email' && (
                     <>
                         <DialogHeader>
