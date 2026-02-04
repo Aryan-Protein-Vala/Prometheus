@@ -51,6 +51,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
         try {
             // Step 1: Create order
+            console.log('Creating order for:', email)
             const orderResponse = await fetch('/api/payment/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -58,6 +59,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
             })
 
             const orderData = await orderResponse.json()
+            console.log('Order response:', orderData)
 
             if (!orderData.success) {
                 throw new Error(orderData.error || 'Failed to create order')
@@ -78,7 +80,8 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                     color: '#000000'
                 },
                 handler: async (response: any) => {
-                    // Step 3: Verify payment
+                    // Step 3: Verify payment - This is called ONLY on successful payment
+                    console.log('Payment successful, verifying:', response)
                     setStep('processing')
 
                     try {
@@ -94,6 +97,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                         })
 
                         const verifyData = await verifyResponse.json()
+                        console.log('Verify response:', verifyData)
 
                         if (verifyData.success) {
                             setLicenseKey(verifyData.licenseKey)
@@ -102,22 +106,33 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                             throw new Error(verifyData.error || 'Payment verification failed')
                         }
                     } catch (verifyError: any) {
+                        console.error('Verify error:', verifyError)
                         setError(verifyError.message)
                         setStep('payment')
                     }
                 },
                 modal: {
                     ondismiss: () => {
+                        console.log('Razorpay modal dismissed')
                         setIsLoading(false)
                     }
                 }
             }
 
             const razorpay = new window.Razorpay(options)
+            
+            // Handle payment failures (like the 500 error you're seeing)
+            razorpay.on('payment.failed', (response: any) => {
+                console.error('Payment failed:', response.error)
+                setError(`Payment failed: ${response.error.description || response.error.reason || 'Unknown error'}`)
+                setIsLoading(false)
+            })
+            
             razorpay.open()
             setIsLoading(false)
 
         } catch (err: any) {
+            console.error('Payment error:', err)
             setError(err.message || 'Payment failed. Please try again.')
             setIsLoading(false)
         }
