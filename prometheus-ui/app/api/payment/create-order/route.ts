@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Razorpay from 'razorpay';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //                    R A Z O R P A Y   O R D E R   C R E A T I O N
+//                    (Using REST API instead of SDK for Vercel compatibility)
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // SETUP REQUIRED:
@@ -14,16 +14,11 @@ import Razorpay from 'razorpay';
 //
 // ═══════════════════════════════════════════════════════════════════════════
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || '',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || '',
-});
-
 // Product configuration
 const PRODUCT = {
   name: 'Prometheus Founder Edition',
-  amount: 900, // Amount in smallest currency unit (₹9.00 = 900 paise, or $9 = 900 cents)
-  currency: 'INR' // Change to 'USD' for dollars
+  amount: 74900, // Amount in smallest currency unit (₹749.00 = 74900 paise)
+  currency: 'INR'
 };
 
 export async function POST(request: NextRequest) {
@@ -35,24 +30,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
     // Check if Razorpay is configured
-    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    if (!keyId || !keySecret) {
       return NextResponse.json(
         { error: 'Payment gateway not configured. Please contact support.' },
         { status: 500 }
       );
     }
 
-    // Create Razorpay order
-    const order = await razorpay.orders.create({
-      amount: PRODUCT.amount,
-      currency: PRODUCT.currency,
-      receipt: `prometheus_${Date.now()}`,
-      notes: {
-        email: email,
-        product: PRODUCT.name
-      }
+    // Create Razorpay order using REST API
+    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    
+    const orderResponse = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${auth}`
+      },
+      body: JSON.stringify({
+        amount: PRODUCT.amount,
+        currency: PRODUCT.currency,
+        receipt: `prometheus_${Date.now()}`,
+        notes: {
+          email: email,
+          product: PRODUCT.name
+        }
+      })
     });
+
+    if (!orderResponse.ok) {
+      const errorData = await orderResponse.json();
+      console.error('Razorpay order error:', errorData);
+      throw new Error('Failed to create order');
+    }
+
+    const order = await orderResponse.json();
 
     return NextResponse.json({
       success: true,
@@ -61,7 +76,7 @@ export async function POST(request: NextRequest) {
         amount: order.amount,
         currency: order.currency
       },
-      key: process.env.RAZORPAY_KEY_ID, // Public key for frontend
+      key: keyId, // Public key for frontend
       product: PRODUCT.name
     });
 
