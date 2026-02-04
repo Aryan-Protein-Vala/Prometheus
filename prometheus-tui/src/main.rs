@@ -19,7 +19,9 @@ use ratatui::{
     Terminal,
 };
 use std::{
-    io,
+    collections::HashMap,
+    fs::File,
+    io::{self, Read},
     path::{Path, PathBuf},
     sync::mpsc,
     thread,
@@ -82,6 +84,59 @@ fn is_protected(path: &Path, home: &Path) -> bool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//                          A U T O - U P D A T E
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn check_for_updates() -> Option<String> {
+    // Check GitHub releases for newer version
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .ok()?;
+    
+    let response = client
+        .get("https://api.github.com/repos/Aryan-Protein-Vala/Prometheus/releases/latest")
+        .header("User-Agent", "Prometheus-Cleaner")
+        .send()
+        .ok()?;
+    
+    if !response.status().is_success() {
+        return None;
+    }
+    
+    let release: serde_json::Value = response.json().ok()?;
+    let latest_version = release["tag_name"].as_str()?;
+    
+    // Strip 'v' prefix if present
+    let latest = latest_version.trim_start_matches('v');
+    let current = CURRENT_VERSION.trim_start_matches('v');
+    
+    if latest != current {
+        Some(latest.to_string())
+    } else {
+        None
+    }
+}
+
+fn perform_update() -> Result<(), Box<dyn std::error::Error>> {
+    use self_update::backends::github;
+    
+    let status = github::Update::configure()
+        .repo_owner("Aryan-Protein-Vala")
+        .repo_name("Prometheus")
+        .bin_name("prometheus")
+        .show_download_progress(true)
+        .current_version(CURRENT_VERSION)
+        .build()?
+        .update()?;
+    
+    println!("Updated to version: {}", status.version());
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //                          C O L O R   P A L E T T E
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -135,6 +190,8 @@ enum JunkCategory {
     PackageManagers, // Homebrew, pip, npm, chocolatey
     DeveloperJunk,   // node_modules, target, xcode, docker
     LargeFiles,      // Files > 500MB
+    Duplicates,      // Duplicate files by hash
+    StartupItems,    // Launch agents/daemons, startup programs
 }
 
 impl JunkCategory {
@@ -146,6 +203,8 @@ impl JunkCategory {
             JunkCategory::PackageManagers => "Package Managers",
             JunkCategory::DeveloperJunk => "Developer Junk",
             JunkCategory::LargeFiles => "Large Files (500MB+)",
+            JunkCategory::Duplicates => "Duplicate Files",
+            JunkCategory::StartupItems => "Startup Items",
         }
     }
 
@@ -157,6 +216,8 @@ impl JunkCategory {
             JunkCategory::PackageManagers => "📦",
             JunkCategory::DeveloperJunk => "🛠️",
             JunkCategory::LargeFiles => "💾",
+            JunkCategory::Duplicates => "📋",
+            JunkCategory::StartupItems => "🚀",
         }
     }
 
@@ -168,6 +229,8 @@ impl JunkCategory {
             JunkCategory::PackageManagers => colors::ACCENT_BLUE,
             JunkCategory::DeveloperJunk => Color::Magenta,
             JunkCategory::LargeFiles => colors::ACCENT_RED,
+            JunkCategory::Duplicates => colors::ACCENT_ORANGE,
+            JunkCategory::StartupItems => colors::ACCENT_PURPLE,
         }
     }
 }
@@ -252,6 +315,8 @@ struct AppState {
     license_message: String,
     delete_error: Option<String>,
     deletion_report: Option<DeletionReport>,
+    // Auto-update
+    update_available: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -291,6 +356,7 @@ impl AppState {
             license_message: String::new(),
             delete_error: None,
             deletion_report: None,
+            update_available: None,
         }
     }
 
@@ -842,6 +908,226 @@ fn scan_large_files(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode
     cat
 }
 
+// ═══ CATEGORY G: DUPLICATE FILES ═══
+
+fn compute_file_hash(path: &Path) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let mut buffer = vec![0u8; 8192]; // Read first 8KB for quick hash
+    let bytes_read = file.read(&mut buffer).ok()?;
+    buffer.truncate(bytes_read);
+    
+    let digest = md5::compute(&buffer);
+    Some(format!("{:x}", digest))
+}
+
+fn scan_duplicates(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
+    let mut cat = CategoryNode::new(JunkCategory::Duplicates);
+    
+    let _ = tx.send(ScanMessage::Progress("Scanning for duplicate files...".to_string()));
+    
+    // Scan common directories for duplicates
+    let scan_dirs = vec![
+        home.join("Downloads"),
+        home.join("Desktop"),
+        home.join("Documents"),
+        home.join("Pictures"),
+    ];
+    
+    // Minimum file size to consider (skip tiny files)
+    let min_size: u64 = 1_000_000; // 1MB
+    
+    // First pass: group files by size (fast pre-filter)
+    let mut size_groups: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+    
+    for scan_dir in &scan_dirs {
+        if !scan_dir.exists() {
+            continue;
+        }
+        
+        let _ = tx.send(ScanMessage::Progress(format!("Scanning {} for duplicates...", scan_dir.display())));
+        
+        for entry in WalkDir::new(scan_dir)
+            .max_depth(5)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                if let Ok(metadata) = entry.metadata() {
+                    let size = metadata.len();
+                    if size >= min_size && !is_protected(entry.path(), home) {
+                        size_groups.entry(size)
+                            .or_insert_with(Vec::new)
+                            .push(entry.path().to_path_buf());
+                    }
+                }
+            }
+        }
+    }
+    
+    // Second pass: hash files with same size
+    let _ = tx.send(ScanMessage::Progress("Computing file hashes...".to_string()));
+    
+    let mut hash_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    
+    for (_, paths) in size_groups.iter().filter(|(_, v)| v.len() > 1) {
+        for path in paths {
+            if let Some(hash) = compute_file_hash(path) {
+                hash_groups.entry(hash)
+                    .or_insert_with(Vec::new)
+                    .push(path.clone());
+            }
+        }
+    }
+    
+    // Collect duplicates (keep first, mark rest as duplicates)
+    for (_, paths) in hash_groups.iter().filter(|(_, v)| v.len() > 1) {
+        // Skip the first file (original), add the rest as duplicates
+        for dup_path in paths.iter().skip(1) {
+            if let Ok(metadata) = std::fs::metadata(dup_path) {
+                let file_name = dup_path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                
+                cat.add_item(JunkItem {
+                    path: dup_path.clone(),
+                    size: metadata.len(),
+                    junk_type: format!("Duplicate: {}", file_name),
+                });
+            }
+        }
+    }
+    
+    // Sort by size (largest duplicates first)
+    cat.items.sort_by(|a, b| b.size.cmp(&a.size));
+    cat.items.truncate(100); // Top 100 duplicates
+    cat
+}
+
+// ═══ CATEGORY H: STARTUP ITEMS ═══
+
+fn scan_startup_items(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
+    let mut cat = CategoryNode::new(JunkCategory::StartupItems);
+    
+    let _ = tx.send(ScanMessage::Progress("Scanning startup items...".to_string()));
+    
+    #[cfg(target_os = "macos")]
+    {
+        // macOS Launch Agents & Daemons
+        let launch_dirs = vec![
+            home.join("Library/LaunchAgents"),
+            PathBuf::from("/Library/LaunchAgents"),
+            PathBuf::from("/Library/LaunchDaemons"),
+        ];
+        
+        for launch_dir in launch_dirs {
+            if !launch_dir.exists() {
+                continue;
+            }
+            
+            let _ = tx.send(ScanMessage::Progress(format!("Scanning {}...", launch_dir.display())));
+            
+            if let Ok(entries) = std::fs::read_dir(&launch_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "plist").unwrap_or(false) {
+                        let file_name = path.file_stem()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        
+                        // Identify common bloatware
+                        let is_bloat = file_name.to_lowercase().contains("adobe")
+                            || file_name.to_lowercase().contains("google")
+                            || file_name.to_lowercase().contains("microsoft")
+                            || file_name.to_lowercase().contains("dropbox")
+                            || file_name.to_lowercase().contains("spotify")
+                            || file_name.to_lowercase().contains("zoom");
+                        
+                        if is_bloat {
+                            if let Ok(metadata) = std::fs::metadata(&path) {
+                                cat.add_item(JunkItem {
+                                    path: path.clone(),
+                                    size: metadata.len(),
+                                    junk_type: format!("Launch Agent: {}", file_name),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Windows Startup folder
+        let startup_dirs = vec![
+            home.join("AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"),
+        ];
+        
+        for startup_dir in startup_dirs {
+            if !startup_dir.exists() {
+                continue;
+            }
+            
+            let _ = tx.send(ScanMessage::Progress(format!("Scanning {}...", startup_dir.display())));
+            
+            if let Ok(entries) = std::fs::read_dir(&startup_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let path = entry.path();
+                    let ext = path.extension()
+                        .map(|e| e.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+                    
+                    if ext == "lnk" || ext == "exe" || ext == "bat" {
+                        let file_name = path.file_stem()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        
+                        if let Ok(metadata) = std::fs::metadata(&path) {
+                            cat.add_item(JunkItem {
+                                path: path.clone(),
+                                size: metadata.len(),
+                                junk_type: format!("Startup: {}", file_name),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Linux autostart
+        let autostart_dir = home.join(".config/autostart");
+        
+        if autostart_dir.exists() {
+            let _ = tx.send(ScanMessage::Progress("Scanning autostart entries...".to_string()));
+            
+            if let Ok(entries) = std::fs::read_dir(&autostart_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "desktop").unwrap_or(false) {
+                        let file_name = path.file_stem()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        
+                        if let Ok(metadata) = std::fs::metadata(&path) {
+                            cat.add_item(JunkItem {
+                                path: path.clone(),
+                                size: metadata.len(),
+                                junk_type: format!("Autostart: {}", file_name),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    cat
+}
+
 // ═══ CATEGORY F: DEVELOPER JUNK (DEEP CLEAN) ═══
 
 fn scan_developer_junk(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
@@ -988,6 +1274,12 @@ fn start_threaded_scan(home: PathBuf) -> mpsc::Receiver<ScanMessage> {
 
         let dev_junk = scan_developer_junk(&home, &tx);
         let _ = tx.send(ScanMessage::CategoryDone(dev_junk));
+        
+        let duplicates = scan_duplicates(&home, &tx);
+        let _ = tx.send(ScanMessage::CategoryDone(duplicates));
+        
+        let startup_items = scan_startup_items(&home, &tx);
+        let _ = tx.send(ScanMessage::CategoryDone(startup_items));
         
         let _ = tx.send(ScanMessage::Complete);
     });
@@ -1740,6 +2032,9 @@ fn main() -> io::Result<()> {
         // Need license input
         state.license_status = LicenseStatus::InputRequired;
     }
+    
+    // Check for updates in background (non-blocking)
+    state.update_available = check_for_updates();
 
     loop {
         state.frame_count = state.frame_count.wrapping_add(1);
