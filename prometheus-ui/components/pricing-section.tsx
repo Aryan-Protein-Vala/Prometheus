@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
-import { PaymentModal } from "@/components/payment-modal"
+import { FreeLicenseModal } from "@/components/free-license-modal"
 
 const features = [
   "Deep System Cleaning",
@@ -15,7 +15,7 @@ const features = [
 
 export function PricingSection() {
   const sectionRef = useRef<HTMLElement>(null)
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [licenseModalOpen, setLicenseModalOpen] = useState(false)
 
   useEffect(() => {
     const section = sectionRef.current
@@ -42,7 +42,7 @@ export function PricingSection() {
         <div className="mx-auto max-w-lg">
           <div className="mb-12 text-center">
             <span className="mb-4 inline-block text-xs uppercase tracking-[0.3em] text-muted-foreground">
-              Early Access
+              Open Access
             </span>
             <h2 className="text-3xl font-medium tracking-tight text-foreground md:text-4xl">Founder Edition</h2>
           </div>
@@ -53,11 +53,10 @@ export function PricingSection() {
               <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Founder Edition V1</span>
             </div>
 
-            {/* Price */}
+            {/* Price - Now FREE */}
             <div className="mb-8 text-center">
-              <span className="mr-2 text-lg text-muted-foreground line-through">$35</span>
-              <span className="text-5xl font-medium text-foreground">$9</span>
-              <span className="ml-2 text-muted-foreground">/ Lifetime</span>
+              <span className="text-5xl font-medium text-foreground">$0</span>
+              <span className="ml-2 text-muted-foreground">/ Free Forever</span>
             </div>
 
             {/* Features */}
@@ -70,23 +69,23 @@ export function PricingSection() {
               ))}
             </ul>
 
-            {/* CTA - Now opens payment modal */}
+            {/* CTA - Opens free license modal */}
             <Button
-              onClick={() => setPaymentModalOpen(true)}
+              onClick={() => setLicenseModalOpen(true)}
               className="breathing-glow w-full bg-foreground text-background hover:bg-foreground/90 py-6 text-base font-medium"
             >
-              Get Licence
+              Get Licence Key
             </Button>
 
             <p className="mt-4 text-center text-xs text-muted-foreground">
-              One-time payment. No subscriptions. No data harvesting.
+              No payment required. No data harvesting. Just enter your email.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Payment Modal */}
-      <PaymentModal open={paymentModalOpen} onOpenChange={setPaymentModalOpen} />
+      {/* Free License Modal */}
+      <FreeLicenseModal open={licenseModalOpen} onOpenChange={setLicenseModalOpen} />
     </>
   )
 }

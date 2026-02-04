@@ -1741,6 +1741,15 @@ fn render_home(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
         ]));
     }
 
+    // Sponsor badge
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("☕ ", Style::default().fg(colors::ACCENT_YELLOW)),
+        Span::styled("Support this project: ", Style::default().fg(colors::TEXT_MUTED)),
+        Span::styled("github.com/sponsors/Aryan-Protein-Vala", Style::default().fg(colors::ACCENT_CYAN)),
+    ]));
+
     let content = Paragraph::new(lines).centered();
     frame.render_widget(content, inner);
 }

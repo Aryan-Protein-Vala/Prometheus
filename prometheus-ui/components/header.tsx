@@ -30,7 +30,7 @@ export function Header() {
                             onClick={() => setLicenseModalOpen(true)}
                             className="px-4 py-2 text-xs font-medium tracking-wide bg-foreground text-background hover:bg-foreground/90 transition-all duration-200"
                         >
-                            Get Free
+                            Get Licence Key
                         </button>
                     </div>
                 </nav>
