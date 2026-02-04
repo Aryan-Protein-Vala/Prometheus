@@ -1,4 +1,4 @@
-import { Twitter, Github } from "lucide-react"
+import { Instagram, Github } from "lucide-react"
 import Link from "next/link"
 
 export function FooterSection() {
@@ -30,13 +30,13 @@ export function FooterSection() {
           {/* Right - Social */}
           <div className="flex items-center gap-6">
             <a
-              href="https://twitter.com"
+              href="https://www.instagram.com/aryantilldusk/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground transition-colors hover:text-foreground"
-              aria-label="Twitter"
+              aria-label="Instagram"
             >
-              <Twitter className="h-5 w-5" />
+              <Instagram className="h-5 w-5" />
             </a>
             <a
               href="https://github.com/Aryan-Protein-Vala/Prometheus"
@@ -53,3 +53,4 @@ export function FooterSection() {
     </footer>
   )
 }
+
