@@ -1816,8 +1816,10 @@ fn main() -> io::Result<()> {
                                     let key_to_verify = state.license_input.clone();
                                     match license::verify_license(&key_to_verify) {
                                         Ok((true, email)) => {
+                                            // Determine source based on key prefix
+                                            let source = if key_to_verify.starts_with("PROM-") { "website" } else { "gumroad" };
                                             // Save license
-                                            let _ = license::save_license(&key_to_verify, email);
+                                            let _ = license::save_license(&key_to_verify, email, source);
                                             state.license_status = LicenseStatus::Valid;
                                             state.view = AppView::Home;
                                         }
