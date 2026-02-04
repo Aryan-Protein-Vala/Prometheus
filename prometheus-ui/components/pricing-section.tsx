@@ -38,7 +38,7 @@ export function PricingSection() {
 
   return (
     <>
-      <section ref={sectionRef} className="px-6 py-24 md:py-32 opacity-0">
+      <section id="pricing" ref={sectionRef} className="px-6 py-24 md:py-32 opacity-0">
         <div className="mx-auto max-w-lg">
           <div className="mb-12 text-center">
             <span className="mb-4 inline-block text-xs uppercase tracking-[0.3em] text-muted-foreground">

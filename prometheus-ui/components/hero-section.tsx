@@ -161,6 +161,25 @@ export function HeroSection() {
             Linux
           </button>
         </div>
+
+        {/* Secondary Links */}
+        <div className="mt-6 flex items-center justify-center gap-4 text-sm">
+          <a
+            href="#pricing"
+            className="text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
+          >
+            Buy Licence Key
+          </a>
+          <span className="text-muted-foreground/30">•</span>
+          <a
+            href="https://github.com/Aryan-Protein-Vala/Prometheus"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
+          >
+            Open Source on GitHub
+          </a>
+        </div>
       </div>
 
       {/* Scroll indicator */}
