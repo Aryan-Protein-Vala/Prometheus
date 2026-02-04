@@ -137,6 +137,47 @@ fn perform_update() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//                     F U L L   D I S K   A C C E S S   (macOS)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(target_os = "macos")]
+fn check_full_disk_access() -> bool {
+    // Try to read a protected directory that requires FDA
+    // ~/Library/Mail is a common FDA-protected directory
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    let protected_paths = [
+        home.join("Library/Mail"),
+        home.join("Library/Messages"),
+        home.join("Library/Safari"),
+    ];
+    
+    for path in &protected_paths {
+        if path.exists() {
+            // Try to read the directory contents
+            if std::fs::read_dir(path).is_ok() {
+                return true; // FDA granted
+            }
+        }
+    }
+    
+    // If none of the protected paths exist or are readable, assume no FDA
+    // But also check if we can at least read Library/Caches (not protected)
+    let caches = home.join("Library/Caches");
+    if caches.exists() && std::fs::read_dir(&caches).is_ok() {
+        // Caches readable but protected dirs not - no FDA
+        return false;
+    }
+    
+    // Default to true if we can't determine (avoid blocking users)
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+fn check_full_disk_access() -> bool {
+    true // FDA is macOS-only concept
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //                          C O L O R   P A L E T T E
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -275,6 +316,7 @@ enum TreePosition {
 #[derive(PartialEq, Clone)]
 enum AppView {
     License,
+    FdaRequired,  // macOS Full Disk Access required
     Home,
     Scanning,
     Results,
@@ -1346,6 +1388,7 @@ fn render_ui(frame: &mut ratatui::Frame, state: &AppState, home: &PathBuf) {
     
     match state.view {
         AppView::License => render_license(frame, chunks[1], state),
+        AppView::FdaRequired => render_fda_required(frame, chunks[1]),
         AppView::Home => render_home(frame, chunks[1], state),
         AppView::Scanning => render_scanning(frame, chunks[1], state),
         AppView::Results => render_tree(frame, chunks[1], state, home),
@@ -1485,6 +1528,49 @@ fn render_header(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
     .centered();
 
     frame.render_widget(title, inner);
+}
+
+fn render_fda_required(frame: &mut ratatui::Frame, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(colors::ACCENT_WARNING))
+        .style(Style::default().bg(colors::BG_SURFACE));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Center the FDA box
+    let popup_width = 70u16;
+    let popup_height = 18u16;
+    let popup_x = inner.x + (inner.width.saturating_sub(popup_width)) / 2;
+    let popup_y = inner.y + (inner.height.saturating_sub(popup_height)) / 2;
+    let popup_area = Rect::new(popup_x, popup_y, popup_width.min(inner.width), popup_height.min(inner.height));
+
+    let lines = vec![
+        Line::from(Span::styled("⚠️  FULL DISK ACCESS REQUIRED", Style::default().fg(colors::ACCENT_WARNING).add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from(Span::styled("Prometheus needs Full Disk Access to scan protected", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(Span::styled("directories like Safari, Mail, and Messages.", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(""),
+        Line::from(Span::styled("To grant access:", Style::default().fg(colors::TEXT_MUTED))),
+        Line::from(""),
+        Line::from(Span::styled("  1. Open System Settings → Privacy & Security", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(Span::styled("  2. Click 'Full Disk Access' on the left", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(Span::styled("  3. Click the + button", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(Span::styled("  4. Navigate to /Applications/Utilities/Terminal.app", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(Span::styled("     (or your terminal app like iTerm, Warp, etc.)", Style::default().fg(colors::TEXT_MUTED))),
+        Line::from(Span::styled("  5. Restart your terminal", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(""),
+        Line::from(""),
+        Line::from(Span::styled("Press ENTER to continue anyway  •  Press Q to quit", Style::default().fg(colors::TEXT_MUTED))),
+    ];
+
+    let text = Paragraph::new(lines)
+        .alignment(Alignment::Center)
+        .style(Style::default().bg(colors::BG_SURFACE));
+
+    frame.render_widget(text, popup_area);
 }
 
 fn render_license(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
@@ -1944,6 +2030,7 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
 
     let help_text = match state.view {
         AppView::License => "License verification required",
+        AppView::FdaRequired => "[Enter] Continue  [Q] Quit",
         AppView::Home => "[S] Scan  [Q] Quit",
         AppView::Scanning => "Scanning system... please wait",
         AppView::Results => "[↑↓/jk] Nav  [O] Expand  [Space] Select  [F] Finder  [D] Delete  [Q] Quit",
@@ -2035,6 +2122,12 @@ fn main() -> io::Result<()> {
     
     // Check for updates in background (non-blocking)
     state.update_available = check_for_updates();
+    
+    // macOS: Check for Full Disk Access if we're going to Home
+    #[cfg(target_os = "macos")]
+    if state.view == AppView::Home && !check_full_disk_access() {
+        state.view = AppView::FdaRequired;
+    }
 
     loop {
         state.frame_count = state.frame_count.wrapping_add(1);
@@ -2133,6 +2226,14 @@ fn main() -> io::Result<()> {
                                 if state.license_input.len() < 50 {
                                     state.license_input.push(c);
                                 }
+                            }
+                            _ => {}
+                        },
+                        AppView::FdaRequired => match key.code {
+                            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
+                            KeyCode::Enter => {
+                                // Continue anyway
+                                state.view = AppView::Home;
                             }
                             _ => {}
                         },

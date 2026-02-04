@@ -186,19 +186,33 @@ main() {
     # Cleanup
     rm -f "$TEMP_PATH" 2>/dev/null
 
-    # Reset terminal to fix any lingering mouse tracking from previous runs
-    stty sane 2>/dev/null || true
-    printf '\033[?1000l\033[?1002l\033[?1003l\033[?1006l' 2>/dev/null || true
-    tput reset 2>/dev/null || true
-
-    # Success
-    echo ""
-    echo -e "${GRAY}  ─────────────────────────────────────${NC}"
-    echo ""
-    echo -e "${WHITE}  Installation complete.${NC}"
-    echo ""
-    echo -e "${DIM}  Run:${NC} ${WHITE}prometheus${NC}"
-    echo ""
+    # For macOS: Reset terminal to fix mouse tracking from previous prometheus runs
+    # This is needed because the old binary might have left terminal in raw mode
+    if [ "$OS" = "macos" ]; then
+        # Disable all mouse tracking modes
+        printf '\033[?1000l' 2>/dev/null  # Disable mouse click tracking
+        printf '\033[?1002l' 2>/dev/null  # Disable mouse drag tracking  
+        printf '\033[?1003l' 2>/dev/null  # Disable all mouse tracking
+        printf '\033[?1006l' 2>/dev/null  # Disable SGR mouse mode
+        printf '\033[?25h' 2>/dev/null    # Show cursor
+        printf '\033c' 2>/dev/null        # Full terminal reset
+        stty sane 2>/dev/null || true
+        
+        # Run reset and then print message
+        reset
+        echo ""
+        echo "  ✓ Download complete. Type 'prometheus' to run the cleaner."
+        echo ""
+    else
+        # Success message for other platforms
+        echo ""
+        echo -e "${GRAY}  ─────────────────────────────────────${NC}"
+        echo ""
+        echo -e "${WHITE}  Installation complete.${NC}"
+        echo ""
+        echo -e "${DIM}  Run:${NC} ${WHITE}prometheus${NC}"
+        echo ""
+    fi
 }
 
 main "$@"
