@@ -2,32 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //                    L I C E N S E   V E R I F I C A T I O N   A P I
-//                    (Works with or without Vercel KV)
+//                    (FREE VERSION - Format validation only)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// This endpoint is called by the Prometheus TUI to verify license keys.
-// If KV is configured, it uses persistent storage.
-// If not, it falls back to in-memory storage (resets on redeploy).
+// Since Prometheus is now FREE, this endpoint simply validates the license
+// key format. Any properly formatted PROM- key is valid.
 //
 // ═══════════════════════════════════════════════════════════════════════════
-
-interface LicenseRecord {
-  uses: number;
-  email: string;
-  createdAt: number;
-  activatedAt?: number;
-}
-
-// In-memory fallback storage (for when KV isn't configured)
-const memoryStore = new Map<string, LicenseRecord>();
-
-// Key prefix for KV storage
-const LICENSE_PREFIX = 'license:';
 
 // Check if key is a valid format
 function isValidKeyFormat(key: string): boolean {
   // PROM-XXXX-XXXX-XXXX-XXXX-XX format (from free-license)
-  // or PROM-XXXXX-XXXX format (legacy)
+  // Must start with PROM-, contain alphanumeric and dashes, min 10 chars
   return /^PROM-[A-Z0-9-]+$/.test(key) && key.length >= 10;
 }
 
@@ -44,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   console.log('License verification request for:', key);
 
-  // Demo key always works
+  // Demo keys always work
   if (key === 'PROM-DEMO-2024' || key === 'PROMETHEUS-DEMO-KEY') {
     return NextResponse.json({
       valid: true,
@@ -54,77 +40,27 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Check key format
+  // Check key format - if format is valid, the key is valid (FREE version)
   if (!isValidKeyFormat(key)) {
     return NextResponse.json({
       valid: false,
       uses: 0,
-      message: 'Invalid license key format.'
+      message: 'Invalid license key format. Keys should start with PROM-'
     });
   }
 
-  // Try KV first, fall back to memory
-  let record: LicenseRecord | null = null;
-  let useKV = false;
+  // For FREE version: Any properly formatted key is valid!
+  console.log('Valid license key format accepted:', key);
 
-  try {
-    const { kv } = await import('@vercel/kv');
-    record = await kv.get<LicenseRecord>(`${LICENSE_PREFIX}${key}`);
-    useKV = true;
-    console.log('Using KV storage, found record:', !!record);
-  } catch (kvError) {
-    console.log('KV not available, using memory storage');
-    record = memoryStore.get(key) || null;
-  }
-
-  if (!record) {
-    return NextResponse.json({
-      valid: false,
-      uses: 0,
-      message: 'Invalid license key.'
-    });
-  }
-
-  // Increment usage count
-  const newUses = record.uses + 1;
-  const updatedRecord: LicenseRecord = {
-    ...record,
-    uses: newUses,
-    activatedAt: record.activatedAt || Date.now()
-  };
-
-  // Save updated record
-  try {
-    if (useKV) {
-      const { kv } = await import('@vercel/kv');
-      await kv.set(`${LICENSE_PREFIX}${key}`, updatedRecord);
-    } else {
-      memoryStore.set(key, updatedRecord);
-    }
-  } catch (saveError) {
-    console.error('Failed to save license update:', saveError);
-  }
-
-  // Check single-use: Only allow first activation
-  if (newUses > 1) {
-    return NextResponse.json({
-      valid: false,
-      uses: newUses,
-      email: record.email,
-      message: 'License key already activated on another device.'
-    });
-  }
-
-  // Success! First activation
   return NextResponse.json({
     valid: true,
-    uses: newUses,
-    email: record.email,
-    message: 'License activated successfully.'
+    uses: 1,
+    email: 'free-user@prometheus.app',
+    message: 'License activated successfully. Enjoy Prometheus!'
   });
 }
 
-// POST endpoint for creating new licenses (called after successful payment)
+// POST endpoint for admin operations (kept for backwards compatibility)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -141,26 +77,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing key or email' }, { status: 400 });
     }
 
-    const record: LicenseRecord = {
-      uses: 0,
-      email: email,
-      createdAt: Date.now()
-    };
-
-    // Try KV first, fall back to memory
-    try {
-      const { kv } = await import('@vercel/kv');
-      await kv.set(`${LICENSE_PREFIX}${key}`, record);
-      console.log('License created in KV:', key);
-    } catch (kvError) {
-      memoryStore.set(key, record);
-      console.log('License created in memory:', key);
-    }
-
+    // For free version, just acknowledge the request
     return NextResponse.json({
       success: true,
       key: key,
-      message: 'License created successfully.'
+      message: 'License registered successfully.'
     });
 
   } catch (error) {
