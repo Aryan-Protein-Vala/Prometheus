@@ -2074,8 +2074,7 @@ fn restore_terminal() {
     let _ = disable_raw_mode();
     let _ = execute!(
         io::stdout(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
+        LeaveAlternateScreen
     );
     let _ = execute!(io::stdout(), crossterm::cursor::Show);
 }
@@ -2096,7 +2095,7 @@ fn main() -> io::Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
