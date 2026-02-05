@@ -43,47 +43,44 @@ export async function POST(request: NextRequest) {
 
         const normalizedEmail = email.toLowerCase().trim();
 
-        // Try to check if email already has a license (using KV if available)
+        // ═══════════════════════════════════════════════════════════════════════════
+        // GOOGLE FORMS INTEGRATION
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Form ID: 1FAIpQLSfXmhbTJy-bA87vvC0uQV8mdNrmuSlK1SS50xAdNg7iIjG90g
+        // Field ID: entry.1292085204
+
+        const GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfXmhbTJy-bA87vvC0uQV8mdNrmuSlK1SS50xAdNg7iIjG90g/formResponse";
+        const EMAIL_FIELD_ID = "entry.1292085204";
+
         try {
-            const { kv } = await import('@vercel/kv');
+            // Silently submit to Google Forms
+            // We use no-cors mode logic implicitly by just sending the POST and ignoring the response structure
+            // effectively since we are server-side we can just fetch.
 
-            // Check existing license for this email
-            const existingKey = await kv.get(`email:${normalizedEmail}`);
-            if (existingKey) {
-                console.log('Returning existing license for:', normalizedEmail);
-                return NextResponse.json({ licenseKey: existingKey });
-            }
+            const formData = new URLSearchParams();
+            formData.append(EMAIL_FIELD_ID, normalizedEmail);
+            formData.append("submit", "Submit");
 
-            // Generate new license
-            const licenseKey = generateLicenseKey();
+            // Fire and forget - don't await strictly or block specific error handling
+            // We want the user to get their license regardless of the sheet status
+            fetch(GOOGLE_FORM_URL, {
+                method: "POST",
+                mode: "no-cors", // Not needed server-side but good practice to keep in mind constraints
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: formData.toString(),
+            }).catch(err => console.error("Failed to save email to sheet:", err));
 
-            // Store email -> license mapping
-            await kv.set(`email:${normalizedEmail}`, licenseKey);
-
-            // Store license data
-            await kv.set(`license:${licenseKey}`, {
-                email: normalizedEmail,
-                uses: 0,
-                createdAt: Date.now(),
-                source: 'free'
-            });
-
-            // Store in email list for updates
-            await kv.lpush('email_list', JSON.stringify({
-                email: normalizedEmail,
-                licenseKey,
-                createdAt: new Date().toISOString()
-            }));
-
-            console.log('Generated free license:', licenseKey, 'for:', normalizedEmail);
-            return NextResponse.json({ licenseKey });
-
-        } catch (kvError) {
-            // KV not available - generate license anyway (just won't be stored)
-            console.log('KV not available, generating ephemeral license');
-            const licenseKey = generateLicenseKey();
-            return NextResponse.json({ licenseKey });
+        } catch (sheetError) {
+            console.error("Sheet integration error:", sheetError);
         }
+
+        // Generate license key
+        const licenseKey = generateLicenseKey();
+
+        console.log('Generated free license:', licenseKey, 'for:', normalizedEmail);
+        return NextResponse.json({ licenseKey });
 
     } catch (error) {
         console.error("Free license error:", error);
