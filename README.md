@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Aryan-Protein-Vala/Prometheus/main/prometheus-ui/public/og-image.png" alt="Prometheus" width="600"/>
+  <img src="https://raw.githubusercontent.com/Aryan-Protein-Vala/Prometheus/main/prometheus-ui/public/og-image.png" alt="Prometheus" width="200"/>
 </p>
 
 <h1 align="center">Prometheus</h1>
