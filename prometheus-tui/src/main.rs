@@ -1747,7 +1747,7 @@ fn render_home(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
     lines.push(Line::from(vec![
         Span::styled("☕ ", Style::default().fg(colors::ACCENT_YELLOW)),
         Span::styled("Support this project: ", Style::default().fg(colors::TEXT_MUTED)),
-        Span::styled("github.com/sponsors/Aryan-Protein-Vala", Style::default().fg(colors::ACCENT_CYAN)),
+        Span::styled("github.com/Aryan-Protein-Vala/Prometheus", Style::default().fg(colors::ACCENT_CYAN)),
     ]));
     lines.push(Line::from(vec![
         Span::styled("📢 ", Style::default().fg(colors::ACCENT_PURPLE)),

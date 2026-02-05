@@ -1,6 +1,6 @@
 [package]
 name = "prometheus"
-version = "1.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "God-Mode System Cleaner - Hunt dev junk in the darkest corners"
 authors = ["Aryan Sharma"]
