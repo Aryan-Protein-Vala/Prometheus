@@ -91,10 +91,20 @@ npm run dev
 
 ## License
 
-Prometheus requires a license key for activation. 
+Prometheus is **FREE**! Get your license key at [prometheus-cleaner.vercel.app](https://prometheus-cleaner.vercel.app)
 
-- **Get a license:** [prometheus-cleaner.vercel.app](https://prometheus-cleaner.vercel.app)
-- **Gumroad keys** are also supported
+---
+
+## Support
+
+If you find Prometheus useful, consider supporting:
+
+- ☕ **Ko-fi:** [ko-fi.com/aryantilldusk](https://ko-fi.com/aryantilldusk)
+- 🍵 **Buy Me a Coffee:** [buymeacoffee.com/aryantilldusk](https://buymeacoffee.com/aryantilldusk)
+
+### Advertise in Prometheus
+
+Want your ad in Prometheus TUI? Contact: **aryansharma24112003@gmail.com**
 
 ---
 
