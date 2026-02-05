@@ -17,7 +17,7 @@ export default function ContactPage() {
         setStatus("sending")
 
         // For now, just open mailto - can be replaced with actual form handling
-        const mailtoLink = `mailto:support@prometheus-cleaner.com?subject=${encodeURIComponent(
+        const mailtoLink = `mailto:aryansharma24112003@gmail.com?subject=${encodeURIComponent(
             `[${formData.subject}] ${formData.name}`
         )}&body=${encodeURIComponent(
             `From: ${formData.name} (${formData.email})\n\n${formData.message}`
@@ -48,10 +48,10 @@ export default function ContactPage() {
                         <section>
                             <h2 className="text-lg font-semibold text-foreground">Email</h2>
                             <a
-                                href="mailto:support@prometheus-cleaner.com"
+                                href="mailto:aryansharma24112003@gmail.com"
                                 className="mt-2 block text-muted-foreground hover:text-foreground transition-colors"
                             >
-                                support@prometheus-cleaner.com
+                                aryansharma24112003@gmail.com
                             </a>
                         </section>
 
