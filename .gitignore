@@ -40,7 +40,6 @@ yarn-error.log*
 .vercel
 
 # Generated files
-og-gen.html
 
 # Ignore gitignore itself
 .gitignore
