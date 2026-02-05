@@ -63,14 +63,15 @@ export async function POST(request: NextRequest) {
 
             // Fire and forget - don't await strictly or block specific error handling
             // We want the user to get their license regardless of the sheet status
-            fetch(GOOGLE_FORM_URL, {
+            // UPDATE: In Vercel Serverless, we MUST await or the function freezes. 
+            // We'll trust Google is fast, or we could use `waitUntil` if on Edge, but this is Node.
+            await fetch(GOOGLE_FORM_URL, {
                 method: "POST",
-                mode: "no-cors", // Not needed server-side but good practice to keep in mind constraints
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
                 body: formData.toString(),
-            }).catch(err => console.error("Failed to save email to sheet:", err));
+            });
 
         } catch (sheetError) {
             console.error("Sheet integration error:", sheetError);
