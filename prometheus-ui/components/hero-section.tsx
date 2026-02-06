@@ -87,7 +87,7 @@ export function HeroSection() {
   }
 
   return (
-    <section className="relative flex min-h-screen flex-col items-center justify-center px-6 py-24">
+    <section className="relative flex min-h-screen flex-col items-center justify-center px-6 pt-24 pb-48">
       {/* Logo */}
       <div className="mb-12">
         <h2 className="text-xl font-light tracking-[0.4em] text-muted-foreground uppercase">
