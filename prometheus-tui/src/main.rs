@@ -23,11 +23,12 @@ use std::{
     fs::File,
     io::{self, Read},
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{mpsc, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime},
 };
 use walkdir::WalkDir;
+use serde::{Deserialize, Serialize};
 
 // ═══════════════════════════════════════════════════════════════════════════
 //                    🛡️ PROTECTED PATHS - NEVER DELETE 🛡️
@@ -58,15 +59,55 @@ const PROTECTED_PATHS: &[&str] = &[
     "Desktop", "Documents", "Pictures", "Videos", "Music", "Downloads",
 ];
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct Config {
+    ignored_paths: Vec<String>,
+}
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+
+fn get_config() -> &'static Config {
+    CONFIG.get_or_init(|| {
+        let mut config = Config::default();
+        if let Some(proj_dirs) = directories::ProjectDirs::from("com", "prometheus", "prometheus") {
+            let config_dir = proj_dirs.config_dir();
+            if !config_dir.exists() {
+                let _ = std::fs::create_dir_all(config_dir);
+            }
+            let config_path = config_dir.join("config.toml");
+            if config_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&config_path) {
+                    if let Ok(parsed) = toml::from_str(&content) {
+                        config = parsed;
+                    }
+                }
+            } else {
+                config.ignored_paths = vec!["~/Projects/MyImportantApp".to_string()];
+                if let Ok(content) = toml::to_string(&config) {
+                    let _ = std::fs::write(&config_path, content);
+                }
+                config.ignored_paths.clear();
+            }
+        }
+        config
+    })
+}
+
 fn is_protected(path: &Path, home: &Path) -> bool {
+    let config = get_config();
     let path_str = path.to_string_lossy();
     let home_str = home.to_string_lossy();
-    let sep = std::path::MAIN_SEPARATOR;
     
+    for ignored in &config.ignored_paths {
+        let expanded = ignored.replace("~", &home_str);
+        if path_str.starts_with(&expanded) {
+            return true;
+        }
+    }
+
     for protected in PROTECTED_PATHS {
-        let normalized = protected.replace('/', &sep.to_string());
-        let full_protected = format!("{}{}{}", home_str, sep, normalized);
-        if path_str.starts_with(&full_protected) || path_str == full_protected {
+        let full_protected = home.join(protected);
+        if path.starts_with(&full_protected) || path == full_protected {
             return true;
         }
     }
@@ -952,14 +993,30 @@ fn scan_large_files(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode
 
 // ═══ CATEGORY G: DUPLICATE FILES ═══
 
-fn compute_file_hash(path: &Path) -> Option<String> {
-    let mut file = File::open(path).ok()?;
+fn compute_partial_hash(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
     let mut buffer = vec![0u8; 8192]; // Read first 8KB for quick hash
     let bytes_read = file.read(&mut buffer).ok()?;
     buffer.truncate(bytes_read);
     
     let digest = md5::compute(&buffer);
     Some(format!("{:x}", digest))
+}
+
+fn compute_full_file_hash(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buffer = vec![0u8; 65536]; // 64KB chunks
+    let mut context = md5::Context::new();
+    loop {
+        let bytes_read = file.read(&mut buffer).ok()?;
+        if bytes_read == 0 {
+            break;
+        }
+        context.consume(&buffer[..bytes_read]);
+    }
+    Some(format!("{:x}", context.compute()))
 }
 
 fn scan_duplicates(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
@@ -1006,15 +1063,28 @@ fn scan_duplicates(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode 
         }
     }
     
-    // Second pass: hash files with same size
-    let _ = tx.send(ScanMessage::Progress("Computing file hashes...".to_string()));
+    // Second pass: hash files with same size (8KB partial hash)
+    let _ = tx.send(ScanMessage::Progress("Computing partial file hashes...".to_string()));
     
-    let mut hash_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut partial_hash_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
     
     for (_, paths) in size_groups.iter().filter(|(_, v)| v.len() > 1) {
         for path in paths {
-            if let Some(hash) = compute_file_hash(path) {
-                hash_groups.entry(hash)
+            if let Some(hash) = compute_partial_hash(path) {
+                partial_hash_groups.entry(hash)
+                    .or_insert_with(Vec::new)
+                    .push(path.clone());
+            }
+        }
+    }
+    
+    // Third pass: compute exact full hash on collisions
+    let mut exact_duplicate_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    
+    for (_, paths) in partial_hash_groups.iter().filter(|(_, v)| v.len() > 1) {
+        for path in paths {
+            if let Some(hash) = compute_full_file_hash(path) {
+                exact_duplicate_groups.entry(hash)
                     .or_insert_with(Vec::new)
                     .push(path.clone());
             }
@@ -1022,7 +1092,7 @@ fn scan_duplicates(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode 
     }
     
     // Collect duplicates (keep first, mark rest as duplicates)
-    for (_, paths) in hash_groups.iter().filter(|(_, v)| v.len() > 1) {
+    for (_, paths) in exact_duplicate_groups.iter().filter(|(_, v)| v.len() > 1) {
         // Skip the first file (original), add the rest as duplicates
         for dup_path in paths.iter().skip(1) {
             if let Ok(metadata) = std::fs::metadata(dup_path) {
@@ -1298,30 +1368,63 @@ fn start_threaded_scan(home: PathBuf) -> mpsc::Receiver<ScanMessage> {
     let (tx, rx) = mpsc::channel();
     
     thread::spawn(move || {
-        // Scan each category
-        let system_junk = scan_system_junk(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(system_junk));
-        
-        let browser_bloat = scan_browser_bloat(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(browser_bloat));
-        
-        let user_hoarding = scan_user_hoarding(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(user_hoarding));
-        
-        let package_managers = scan_package_managers(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(package_managers));
-        
-        let large_files = scan_large_files(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(large_files));
+        rayon::scope(|s| {
+            let tx1 = tx.clone();
+            let home1 = home.clone();
+            s.spawn(move |_| {
+                let system_junk = scan_system_junk(&home1, &tx1);
+                let _ = tx1.send(ScanMessage::CategoryDone(system_junk));
+            });
 
-        let dev_junk = scan_developer_junk(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(dev_junk));
-        
-        let duplicates = scan_duplicates(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(duplicates));
-        
-        let startup_items = scan_startup_items(&home, &tx);
-        let _ = tx.send(ScanMessage::CategoryDone(startup_items));
+            let tx2 = tx.clone();
+            let home2 = home.clone();
+            s.spawn(move |_| {
+                let browser_bloat = scan_browser_bloat(&home2, &tx2);
+                let _ = tx2.send(ScanMessage::CategoryDone(browser_bloat));
+            });
+
+            let tx3 = tx.clone();
+            let home3 = home.clone();
+            s.spawn(move |_| {
+                let user_hoarding = scan_user_hoarding(&home3, &tx3);
+                let _ = tx3.send(ScanMessage::CategoryDone(user_hoarding));
+            });
+
+            let tx4 = tx.clone();
+            let home4 = home.clone();
+            s.spawn(move |_| {
+                let package_managers = scan_package_managers(&home4, &tx4);
+                let _ = tx4.send(ScanMessage::CategoryDone(package_managers));
+            });
+
+            let tx5 = tx.clone();
+            let home5 = home.clone();
+            s.spawn(move |_| {
+                let large_files = scan_large_files(&home5, &tx5);
+                let _ = tx5.send(ScanMessage::CategoryDone(large_files));
+            });
+
+            let tx6 = tx.clone();
+            let home6 = home.clone();
+            s.spawn(move |_| {
+                let dev_junk = scan_developer_junk(&home6, &tx6);
+                let _ = tx6.send(ScanMessage::CategoryDone(dev_junk));
+            });
+
+            let tx7 = tx.clone();
+            let home7 = home.clone();
+            s.spawn(move |_| {
+                let duplicates = scan_duplicates(&home7, &tx7);
+                let _ = tx7.send(ScanMessage::CategoryDone(duplicates));
+            });
+
+            let tx8 = tx.clone();
+            let home8 = home.clone();
+            s.spawn(move |_| {
+                let startup_items = scan_startup_items(&home8, &tx8);
+                let _ = tx8.send(ScanMessage::CategoryDone(startup_items));
+            });
+        });
         
         let _ = tx.send(ScanMessage::Complete);
     });
@@ -1414,6 +1517,31 @@ fn render_ui(frame: &mut ratatui::Frame, state: &AppState, home: &PathBuf) {
             Line::from("Deletion Failed for some items."),
             Line::from(""),
             Line::from(Span::styled(err, Style::default().fg(colors::ACCENT_RED))),
+            Line::from(""),
+            Line::from(Span::styled("Press [Esc] to dismiss", Style::default().fg(colors::TEXT_MUTED))),
+        ])
+        .alignment(Alignment::Center)
+        .wrap(ratatui::widgets::Wrap { trim: true });
+        
+        frame.render_widget(error_msg, inner);
+    }
+    
+    if state.pro_popup {
+        let area = frame.area();
+        let block = Block::default()
+            .title(Span::styled(" PROMETHEUS PRO REQUIRED ", Style::default().fg(colors::ACCENT_WARNING).bold()))
+            .borders(Borders::ALL)
+            .style(Style::default().bg(colors::BG_DEEP));
+        
+        let rect = centered_rect(60, 20, area);
+        frame.render_widget(Clear, rect);
+        frame.render_widget(block, rect);
+
+        let inner = centered_rect_inner(rect);
+        let error_msg = Paragraph::new(vec![
+            Line::from("Deep System & Developer Cleaning requires a PRO license."),
+            Line::from(""),
+            Line::from(Span::styled("Get yours at prometheus-cleaner.vercel.app", Style::default().fg(colors::ACCENT_CYAN))),
             Line::from(""),
             Line::from(Span::styled("Press [Esc] to dismiss", Style::default().fg(colors::TEXT_MUTED))),
         ])
@@ -2265,7 +2393,19 @@ fn main() -> io::Result<()> {
                         AppView::Scanning => {
                             // Can't interrupt scanning
                         }
-                        AppView::Results => match key.code {
+                        AppView::Results => {
+                            if state.pro_popup {
+                                match key.code {
+                                    KeyCode::Esc | KeyCode::Enter => {
+                                        state.pro_popup = false;
+                                        state.selected_paths.clear();
+                                    }
+                                    _ => {}
+                                }
+                                continue;
+                            }
+                            
+                            match key.code {
                             KeyCode::Char('q') | KeyCode::Char('Q') => break,
                             KeyCode::Up | KeyCode::Char('k') => state.move_up(),
                             KeyCode::Down | KeyCode::Char('j') => state.move_down(),
@@ -2289,7 +2429,24 @@ fn main() -> io::Result<()> {
                             }
                             KeyCode::Enter | KeyCode::Char('d') | KeyCode::Char('D') => {
                                 if !state.selected_paths.is_empty() {
-                                    state.view = AppView::Deleting;
+                                    let mut premium_selected = false;
+                                    for cat in &state.categories {
+                                        if matches!(cat.category, JunkCategory::DeveloperJunk | JunkCategory::PackageManagers | JunkCategory::Duplicates) {
+                                            for item in &cat.items {
+                                                if state.selected_paths.contains(&item.path) {
+                                                    premium_selected = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if premium_selected { break; }
+                                    }
+
+                                    if premium_selected && state.license_status != crate::license::LicenseStatus::Valid {
+                                        state.pro_popup = true;
+                                    } else {
+                                        state.view = AppView::Deleting;
+                                    }
                                 }
                             }
                             KeyCode::Esc => {

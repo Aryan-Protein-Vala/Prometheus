@@ -40,6 +40,7 @@ yarn-error.log*
 .vercel
 
 # Generated files
+forward.md
 
 # Ignore gitignore itself
 .gitignore
