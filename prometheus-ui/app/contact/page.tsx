@@ -62,17 +62,7 @@ export default function ContactPage() {
                             </p>
                         </section>
 
-                        <section>
-                            <h2 className="text-lg font-semibold text-foreground">GitHub</h2>
-                            <a
-                                href="https://github.com/Aryan-Protein-Vala/Prometheus"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-2 block text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                Report bugs or request features →
-                            </a>
-                        </section>
+
 
                         <section>
                             <h2 className="text-lg font-semibold text-foreground">Common Topics</h2>
