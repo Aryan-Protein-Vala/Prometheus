@@ -180,10 +180,6 @@ fn verify_gumroad_key(license_key: &str) -> Result<(bool, Option<String>), Strin
         .map_err(|e| format!("Failed to parse response: {}", e))?;
     
     if gumroad_response.success {
-        // SINGLE-USE CHECK: Reject if already used
-        if gumroad_response.uses > 1 {
-            return Ok((false, Some("License key already activated on another device.".to_string())));
-        }
         
         if let Some(purchase) = &gumroad_response.purchase {
             // Check if refunded or chargebacked
@@ -224,10 +220,6 @@ fn verify_website_key(license_key: &str) -> Result<(bool, Option<String>), Strin
         .map_err(|e| format!("Failed to parse response: {}", e))?;
     
     if website_response.valid {
-        // SINGLE-USE CHECK: Reject if already used
-        if website_response.uses > 1 {
-            return Ok((false, Some("License key already activated on another device.".to_string())));
-        }
         
         Ok((true, website_response.email))
     } else {

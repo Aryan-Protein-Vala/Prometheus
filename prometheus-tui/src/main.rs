@@ -1000,23 +1000,23 @@ fn compute_partial_hash(path: &Path) -> Option<String> {
     let bytes_read = file.read(&mut buffer).ok()?;
     buffer.truncate(bytes_read);
     
-    let digest = md5::compute(&buffer);
-    Some(format!("{:x}", digest))
+    let hash = blake3::hash(&buffer);
+    Some(hash.to_hex().to_string())
 }
 
 fn compute_full_file_hash(path: &Path) -> Option<String> {
     use std::io::Read;
     let mut file = std::fs::File::open(path).ok()?;
     let mut buffer = vec![0u8; 65536]; // 64KB chunks
-    let mut context = md5::Context::new();
+    let mut hasher = blake3::Hasher::new();
     loop {
         let bytes_read = file.read(&mut buffer).ok()?;
         if bytes_read == 0 {
             break;
         }
-        context.consume(&buffer[..bytes_read]);
+        hasher.update(&buffer[..bytes_read]);
     }
-    Some(format!("{:x}", context.compute()))
+    Some(hasher.finalize().to_hex().to_string())
 }
 
 fn scan_duplicates(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
@@ -2195,21 +2195,16 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
 
 /// Smart Delete - Handles Canonicalization for Windows
 /// Returns Ok if trashed, Err if failed.
-/// NOTE: Deliberately does NOT implement force delete (Safety First).
+/// Safety: If trash fails, we return an error instead of silently force-deleting.
 fn smart_delete(path: &Path) -> Result<(), String> {
     // 1. Solve the Windows Path Issue (Get Absolute Path)
     let abs_path = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
 
-    // 2. Try to move to Trash
-    if trash::delete(&abs_path).is_err() {
-        // 3. Fallback: Force Delete (The Mean Way) - only if Trash failed
-        if abs_path.is_dir() {
-            std::fs::remove_dir_all(&abs_path).map_err(|e| format!("Force delete failed: {}", e))?;
-        } else {
-            std::fs::remove_file(&abs_path).map_err(|e| format!("Force delete failed: {}", e))?;
-        }
-    }
-    Ok(())
+    // 2. Try to move to Trash — if this fails, report the error.
+    //    We deliberately do NOT fallback to force-delete (rm -rf).
+    trash::delete(&abs_path).map_err(|e| {
+        format!("Could not move to Trash: {}. File was NOT deleted.", e)
+    })
 }
 
 fn restore_terminal() {
