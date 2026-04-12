@@ -170,15 +170,6 @@ export function HeroSection() {
           >
             Buy Licence Key
           </a>
-          <span className="text-muted-foreground/30 hidden sm:inline">•</span>
-          <a
-            href="https://github.com/Aryan-Protein-Vala/Prometheus"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
-          >
-            Open Source on GitHub
-          </a>
         </div>
       </div>
 

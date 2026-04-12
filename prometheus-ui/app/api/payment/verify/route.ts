@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import prisma from '../../../../lib/prisma';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //                    R A Z O R P A Y   P A Y M E N T   V E R I F I C A T I O N
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// This endpoint verifies the payment signature and generates a license key.
-// Storage is OPTIONAL - if KV/database isn't configured, it still works.
-//
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Generate a unique license key
@@ -78,22 +74,23 @@ export async function POST(request: NextRequest) {
     const licenseKey = generateLicenseKey();
     console.log('Generated license key:', licenseKey);
 
-    // Try to store in KV if available (optional - doesn't block license generation)
+    // Store in PostgreSQL Database via Prisma
     try {
-      // Dynamic import to avoid build errors if @vercel/kv isn't installed
-      const { kv } = await import('@vercel/kv');
-      
-      await kv.set(`license:${licenseKey}`, {
-        uses: 0,
-        email: email,
-        createdAt: Date.now(),
-        paymentId: razorpay_payment_id,
-        orderId: razorpay_order_id
+      await prisma.license.create({
+        data: {
+          key: licenseKey,
+          email: email,
+          uses: 0,
+          maxUses: 3 // Allow up to 3 devices
+        }
       });
-      console.log('License stored in KV');
-    } catch (kvError) {
-      // KV not configured - that's okay, license still works
-      console.log('KV storage skipped (not configured):', kvError);
+      console.log('License stored securely in PostgreSQL DB');
+    } catch (dbError) {
+      console.error('Database storage failed:', dbError);
+      return NextResponse.json(
+        { error: 'Failed to generate license in database. Contact support.' },
+        { status: 500 }
+      );
     }
 
     // SUCCESS! Return the license key

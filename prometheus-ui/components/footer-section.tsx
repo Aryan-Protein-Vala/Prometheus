@@ -1,4 +1,4 @@
-import { Instagram, Github } from "lucide-react"
+import { Instagram } from "lucide-react"
 import Link from "next/link"
 
 export function FooterSection() {
@@ -37,15 +37,6 @@ export function FooterSection() {
               aria-label="Instagram"
             >
               <Instagram className="h-5 w-5" />
-            </a>
-            <a
-              href="https://github.com/Aryan-Protein-Vala/Prometheus"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-muted-foreground transition-colors hover:text-foreground"
-              aria-label="GitHub"
-            >
-              <Github className="h-5 w-5" />
             </a>
           </div>
         </div>

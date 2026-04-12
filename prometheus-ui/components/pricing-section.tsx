@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
-import { FreeLicenseModal } from "@/components/free-license-modal"
+import { PaymentModal } from "@/components/payment-modal"
 
 const features = [
   "Deep System Cleaning",
@@ -42,7 +42,7 @@ export function PricingSection() {
         <div className="mx-auto max-w-lg">
           <div className="mb-12 text-center">
             <span className="mb-4 inline-block text-xs uppercase tracking-[0.3em] text-muted-foreground">
-              Open Access
+              Early Access
             </span>
             <h2 className="text-3xl font-medium tracking-tight text-foreground md:text-4xl">Founder Edition</h2>
           </div>
@@ -55,8 +55,8 @@ export function PricingSection() {
 
             {/* Price - Now FREE */}
             <div className="mb-8 text-center">
-              <span className="text-5xl font-medium text-foreground">$0</span>
-              <span className="ml-2 text-muted-foreground">/ Free Forever</span>
+              <span className="text-5xl font-medium text-foreground">₹749</span>
+              <span className="ml-2 text-muted-foreground">/ Lifetime Access</span>
             </div>
 
             {/* Features */}
@@ -78,14 +78,14 @@ export function PricingSection() {
             </Button>
 
             <p className="mt-4 text-center text-xs text-muted-foreground">
-              No payment required. No data harvesting. Just enter your email.
+              Secure one-time payment. No subscriptions. No data tracking.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Free License Modal */}
-      <FreeLicenseModal open={licenseModalOpen} onOpenChange={setLicenseModalOpen} />
+      {/* Payment Modal */}
+      <PaymentModal open={licenseModalOpen} onOpenChange={setLicenseModalOpen} />
     </>
   )
 }
