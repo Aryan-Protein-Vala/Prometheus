@@ -1796,12 +1796,12 @@ fn render_license(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
             }
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                "Built from source? Set PROMETHEUS_DEV=1",
-                Style::default().fg(colors::TEXT_MUTED).add_modifier(Modifier::ITALIC),
+                "Need a license key?",
+                Style::default().fg(colors::TEXT_MUTED),
             )));
             lines.push(Line::from(Span::styled(
-                "Otherwise, please support the dev!",
-                Style::default().fg(colors::TEXT_MUTED),
+                "Visit: prometheus-cleaner.vercel.app",
+                Style::default().fg(colors::ACCENT_CYAN),
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
@@ -1872,11 +1872,6 @@ fn render_home(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
     // Sponsor badge
     lines.push(Line::from(""));
     lines.push(Line::from(""));
-    lines.push(Line::from(vec![
-        Span::styled("☕ ", Style::default().fg(colors::ACCENT_YELLOW)),
-        Span::styled("Support this project: ", Style::default().fg(colors::TEXT_MUTED)),
-        Span::styled("github.com/Aryan-Protein-Vala/Prometheus", Style::default().fg(colors::ACCENT_CYAN)),
-    ]));
     lines.push(Line::from(vec![
         Span::styled("📢 ", Style::default().fg(colors::ACCENT_PURPLE)),
         Span::styled("Advertise here: ", Style::default().fg(colors::TEXT_MUTED)),
