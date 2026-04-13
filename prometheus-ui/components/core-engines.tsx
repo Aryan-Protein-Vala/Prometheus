@@ -27,6 +27,14 @@ const engines = [
     status: "ACTIVE",
     statusColor: "bg-green-500",
   },
+  {
+    id: "SA-01",
+    name: "Security Audit",
+    codename: "PROTOCOL-SA",
+    description: "Deep scans for exposed .env, .pem, and SSH keys. 100% offline detection for complete privacy.",
+    status: "ACTIVE",
+    statusColor: "bg-green-500",
+  },
 ]
 
 export function CoreEngines() {

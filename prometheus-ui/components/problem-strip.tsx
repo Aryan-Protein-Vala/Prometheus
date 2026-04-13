@@ -9,6 +9,7 @@ const problems = [
   "OFFLINE INTELLIGENCE",
   "ZERO TELEMETRY",
   "AIR-GAPPED SECURITY",
+  "EXPOSED SECRET DETECTION",
 ]
 
 export function ProblemStrip() {

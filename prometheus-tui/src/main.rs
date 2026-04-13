@@ -274,6 +274,7 @@ enum JunkCategory {
     LargeFiles,      // Files > 500MB
     Duplicates,      // Duplicate files by hash
     StartupItems,    // Launch agents/daemons, startup programs
+    SecurityRisks,   // Exposed secrets like .env, id_rsa, .pem
 }
 
 impl JunkCategory {
@@ -287,6 +288,7 @@ impl JunkCategory {
             JunkCategory::LargeFiles => "Large Files (500MB+)",
             JunkCategory::Duplicates => "Duplicate Files",
             JunkCategory::StartupItems => "Startup Items",
+            JunkCategory::SecurityRisks => "Security Risks",
         }
     }
 
@@ -300,6 +302,7 @@ impl JunkCategory {
             JunkCategory::LargeFiles => "💾",
             JunkCategory::Duplicates => "📋",
             JunkCategory::StartupItems => "🚀",
+            JunkCategory::SecurityRisks => "🛡️",
         }
     }
 
@@ -313,6 +316,7 @@ impl JunkCategory {
             JunkCategory::LargeFiles => colors::ACCENT_RED,
             JunkCategory::Duplicates => colors::ACCENT_ORANGE,
             JunkCategory::StartupItems => colors::ACCENT_PURPLE,
+            JunkCategory::SecurityRisks => colors::ACCENT_RED,
         }
     }
 }
@@ -1243,6 +1247,63 @@ fn scan_startup_items(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNo
     cat
 }
 
+// ═══ CATEGORY G: SECURITY RISKS (AUDIT) ═══
+
+fn scan_security_risks(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
+    let mut cat = CategoryNode::new(JunkCategory::SecurityRisks);
+    
+    let _ = tx.send(ScanMessage::Progress("Auditing system for exposed secrets...".to_string()));
+    
+    let scan_dirs = vec![
+        home.join("Downloads"),
+        home.join("Desktop"),
+    ];
+    
+    let secret_names = vec!["id_rsa", ".env", "secrets.json"];
+    let secret_exts = vec!["pem", "key"];
+    
+    for scan_dir in scan_dirs {
+        if !scan_dir.exists() { continue; }
+        
+        let _ = tx.send(ScanMessage::Progress(format!("Checking {} for security risks...", scan_dir.display())));
+        
+        for entry in WalkDir::new(scan_dir)
+            .max_depth(3)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                let path = entry.path();
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                
+                let is_secret = secret_names.contains(&file_name.as_str()) || secret_exts.contains(&ext.as_str());
+                
+                if is_secret && !is_protected(path, home) {
+                    if let Ok(metadata) = std::fs::metadata(path) {
+                        let junk_type = if ext == "pem" || ext == "key" {
+                            "Exposed Key/Certificate"
+                        } else if file_name == "id_rsa" {
+                            "Exposed SSH Private Key"
+                        } else {
+                            "Exposed Environmental Secret"
+                        };
+
+                        cat.add_item(JunkItem {
+                            path: path.to_path_buf(),
+                            size: metadata.len(),
+                            junk_type: junk_type.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    cat.items.sort_by(|a, b| b.size.cmp(&a.size));
+    cat
+}
+
 // ═══ CATEGORY F: DEVELOPER JUNK (DEEP CLEAN) ═══
 
 fn scan_developer_junk(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryNode {
@@ -1426,6 +1487,13 @@ fn start_threaded_scan(home: PathBuf) -> mpsc::Receiver<ScanMessage> {
             s.spawn(move |_| {
                 let startup_items = scan_startup_items(&home8, &tx8);
                 let _ = tx8.send(ScanMessage::CategoryDone(startup_items));
+            });
+
+            let tx9 = tx.clone();
+            let home9 = home.clone();
+            s.spawn(move |_| {
+                let security_risks = scan_security_risks(&home9, &tx9);
+                let _ = tx9.send(ScanMessage::CategoryDone(security_risks));
             });
         });
         
@@ -1832,8 +1900,9 @@ fn render_home(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
         ("🗑️", "System Junk", "Logs, caches, temp files", colors::ACCENT_RED),
         ("🌐", "Browser Bloat", "Chrome, Firefox, Safari cache", colors::ACCENT_PURPLE),
         ("📥", "User Hoarding", "Old downloads, screenshots", colors::ACCENT_YELLOW),
-        ("📦", "Package Managers", "npm, pip, Homebrew caches", colors::ACCENT_CYAN),
+        ("💼", "Package Managers", "npm, pip, Homebrew caches", colors::ACCENT_CYAN),
         ("💾", "Large Files", "Files larger than 500MB", colors::ACCENT_ORANGE),
+        ("🛡️", "Security Risks", "Exposed .env, .pem, and SSH keys", colors::ACCENT_RED),
     ];
 
     let mut lines: Vec<Line> = vec![
