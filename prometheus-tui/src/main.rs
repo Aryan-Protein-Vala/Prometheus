@@ -400,6 +400,8 @@ struct AppState {
     deletion_report: Option<DeletionReport>,
     // Auto-update
     update_available: Option<String>,
+    // PRO Features
+    pro_popup: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -440,6 +442,7 @@ impl AppState {
             delete_error: None,
             deletion_report: None,
             update_available: None,
+            pro_popup: false,
         }
     }
 
@@ -2432,7 +2435,7 @@ fn main() -> io::Result<()> {
                                         if premium_selected { break; }
                                     }
 
-                                    if premium_selected && state.license_status != crate::license::LicenseStatus::Valid {
+                                    if premium_selected && state.license_status != LicenseStatus::Valid {
                                         state.pro_popup = true;
                                     } else {
                                         state.view = AppView::Deleting;
