@@ -2446,7 +2446,8 @@ fn main() -> io::Result<()> {
                                 state.total_size_found = 0;
                             }
                             _ => {}
-                        },
+                        }
+                    }
                         AppView::Deleting => {}
                     }
                 }
