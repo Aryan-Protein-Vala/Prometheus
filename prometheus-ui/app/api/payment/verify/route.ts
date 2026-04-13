@@ -81,7 +81,8 @@ export async function POST(request: NextRequest) {
           key: licenseKey,
           email: email,
           uses: 0,
-          maxUses: 3 // Allow up to 3 devices
+          maxUses: 3, // Allow up to 3 devices
+          source: 'razorpay'
         }
       });
       console.log('License stored securely in PostgreSQL DB');
