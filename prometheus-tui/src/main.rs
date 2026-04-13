@@ -2264,13 +2264,14 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
 /// Returns Ok if trashed, Err if failed.
 /// Safety: If trash fails, we return an error instead of silently force-deleting.
 fn smart_delete(path: &Path) -> Result<(), String> {
-    // 1. Solve the Windows Path Issue (Get Absolute Path)
-    let abs_path = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
+    // 1. Try to canonicalize (fixes Windows path issues), 
+    // but if Windows denies access to metadata, fallback to the original path.
+    let target_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
 
-    // 2. Try to move to Trash — if this fails, report the error.
-    //    We deliberately do NOT fallback to force-delete (rm -rf).
-    trash::delete(&abs_path).map_err(|e| {
-        format!("Could not move to Trash: {}. File was NOT deleted.", e)
+    // 2. Try to move to Trash
+    trash::delete(&target_path).map_err(|_| {
+        // If the trash fails, it's almost certainly an OS file lock
+        "Locked by OS (Try running terminal as Administrator)".to_string()
     })
 }
 

@@ -75,7 +75,7 @@ export function CoreEngines() {
           <h2 className="text-3xl font-medium tracking-tight text-foreground md:text-4xl">The Engines</h2>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {engines.map((engine) => (
             <div
               key={engine.id}
