@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     } catch (dbError) {
       console.error('Database storage failed:', dbError);
       return NextResponse.json(
-        { error: 'Failed to generate license in database. Contact support.' },
+        { error: `Database Error: ${String(dbError)}` },
         { status: 500 }
       );
     }
