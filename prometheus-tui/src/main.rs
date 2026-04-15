@@ -1257,10 +1257,21 @@ fn scan_security_risks(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryN
     let scan_dirs = vec![
         home.join("Downloads"),
         home.join("Desktop"),
+        home.join("Documents"),
     ];
     
-    let secret_names = vec!["id_rsa", ".env", "secrets.json"];
-    let secret_exts = vec!["pem", "key"];
+    // Original secret file names
+    let secret_names: Vec<&str> = vec!["id_rsa", ".env", "secrets.json"];
+    // Original secret extensions
+    let secret_exts: Vec<&str> = vec!["pem", "key"];
+    // Database dump extensions
+    let db_exts: Vec<&str> = vec!["sql", "sqlite", "sqlite3", "db"];
+    // Plaintext credential file names
+    let cred_names: Vec<&str> = vec!["passwords.csv", "recovery-codes.txt", "backup-codes.txt", "mfa_codes.txt"];
+    // Crypto wallet file names
+    let wallet_names: Vec<&str> = vec!["wallet.dat", "keystore.json"];
+    // Crypto wallet extensions
+    let wallet_exts: Vec<&str> = vec!["keytool"];
     
     for scan_dir in scan_dirs {
         if !scan_dir.exists() { continue; }
@@ -1268,7 +1279,7 @@ fn scan_security_risks(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryN
         let _ = tx.send(ScanMessage::Progress(format!("Checking {} for security risks...", scan_dir.display())));
         
         for entry in WalkDir::new(scan_dir)
-            .max_depth(3)
+            .max_depth(4)
             .into_iter()
             .filter_map(|e| e.ok())
         {
@@ -1277,23 +1288,35 @@ fn scan_security_risks(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryN
                 let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
                 
-                let is_secret = secret_names.contains(&file_name.as_str()) || secret_exts.contains(&ext.as_str());
+                // Determine the threat category
+                let junk_type = if secret_names.contains(&file_name.as_str()) || secret_exts.contains(&ext.as_str()) {
+                    // Original secrets
+                    if ext == "pem" || ext == "key" {
+                        Some("Exposed Key/Certificate")
+                    } else if file_name == "id_rsa" {
+                        Some("Exposed SSH Private Key")
+                    } else {
+                        Some("Exposed Environmental Secret")
+                    }
+                } else if db_exts.contains(&ext.as_str()) {
+                    Some("Exposed Database Dump")
+                } else if cred_names.contains(&file_name.as_str()) {
+                    Some("Plaintext Credential Dump")
+                } else if wallet_names.contains(&file_name.as_str()) || wallet_exts.contains(&ext.as_str()) {
+                    Some("Exposed Crypto Wallet")
+                } else {
+                    None
+                };
                 
-                if is_secret && !is_protected(path, home) {
-                    if let Ok(metadata) = std::fs::metadata(path) {
-                        let junk_type = if ext == "pem" || ext == "key" {
-                            "Exposed Key/Certificate"
-                        } else if file_name == "id_rsa" {
-                            "Exposed SSH Private Key"
-                        } else {
-                            "Exposed Environmental Secret"
-                        };
-
-                        cat.add_item(JunkItem {
-                            path: path.to_path_buf(),
-                            size: metadata.len(),
-                            junk_type: junk_type.to_string(),
-                        });
+                if let Some(label) = junk_type {
+                    if !is_protected(path, home) {
+                        if let Ok(metadata) = std::fs::metadata(path) {
+                            cat.add_item(JunkItem {
+                                path: path.to_path_buf(),
+                                size: metadata.len(),
+                                junk_type: label.to_string(),
+                            });
+                        }
                     }
                 }
             }
