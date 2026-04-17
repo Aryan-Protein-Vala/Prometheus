@@ -54,12 +54,18 @@ case "$(uname -s)" in
 esac
 
 echo -e "${GRAY}  ◦${NC} Downloading Prometheus System Cleaner..."
-# In a real scenario, we would curl from GitHub. For now, we assume build artifacts exist or mock it.
-# curl -sL "${GITHUB_URL}/${BINARY_NAME}" -o "$INSTALL_PATH"
-# curl -sL "${GITHUB_URL}/${ENFORCER_NAME}" -o "$ENFORCER_PATH"
+# Create Temp directory for binaries
+mkdir -p /tmp/prometheus-setup
+curl -sL "${GITHUB_URL}/${BINARY_NAME}" -o "/tmp/prometheus-setup/prometheus"
+curl -sL "${GITHUB_URL}/${ENFORCER_NAME}" -o "/tmp/prometheus-setup/prometheus-enforcer"
 
-chmod +x "$INSTALL_PATH" 2>/dev/null || true
-chmod +x "$ENFORCER_PATH" 2>/dev/null || true
+# Move to bin and make executable
+mv /tmp/prometheus-setup/prometheus "$INSTALL_PATH"
+mv /tmp/prometheus-setup/prometheus-enforcer "$ENFORCER_PATH"
+
+chmod +x "$INSTALL_PATH"
+chmod +x "$ENFORCER_PATH"
+rm -rf /tmp/prometheus-setup
 
 # Admin Config Setup
 mkdir -p "$CONFIG_DIR"

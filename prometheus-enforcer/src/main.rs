@@ -1,9 +1,11 @@
 use axum::{
     extract::State,
-    http::{Method, StatusCode},
+    http::{header, Method, StatusCode, Uri},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -13,6 +15,10 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
+
+#[derive(RustEmbed)]
+#[folder = "../prometheus-admin-ui/dist/"]
+struct Assets;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Config {
@@ -66,7 +72,6 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
         }
     }
 
-    // Append the new block
     lines.push(String::new());
     lines.push(START_MARKER.to_string());
     for domain in blocked_domains {
@@ -78,7 +83,6 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
     }
     lines.push(END_MARKER.to_string());
 
-    // Write back
     let mut file = OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -90,7 +94,6 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
         writeln!(file, "{}", line).map_err(|e| format!("Write failed: {}", e))?;
     }
 
-    println!("SUCCESS: Hosts file synced with {} domains.", blocked_domains.len());
     Ok(())
 }
 
@@ -106,7 +109,6 @@ async fn update_config(
     let mut config = state.config.lock().await;
     config.blocked_domains = payload.blocked_domains;
 
-    // Save to file
     if let Some(parent) = state.config_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -119,7 +121,6 @@ async fn update_config(
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Serialization error: {}", e)),
     }
 
-    // Sync hosts
     if let Err(e) = sync_hosts_file(&config.blocked_domains).await {
         return (StatusCode::FORBIDDEN, e);
     }
@@ -127,11 +128,36 @@ async fn update_config(
     (StatusCode::OK, "Config updated and synced".to_string())
 }
 
+async fn static_handler(uri: Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+
+    if path.is_empty() || path == "index.html" {
+        return index_html().await;
+    }
+
+    match Assets::get(path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            Response::builder()
+                .header(header::CONTENT_TYPE, mime.as_ref())
+                .body(axum::body::Body::from(content.data))
+                .unwrap()
+        }
+        None => index_html().await,
+    }
+}
+
+async fn index_html() -> Response {
+    match Assets::get("index.html") {
+        Some(content) => Html(content.data).into_response(),
+        None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let config_path = get_config_path();
     
-    // Load existing config
     let initial_config = if config_path.exists() {
         fs::read_to_string(&config_path)
             .ok()
@@ -149,16 +175,17 @@ async fn main() {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(vec![Method::GET, Method::POST])
-        .allow_headers(vec![axum::http::header::CONTENT_TYPE]);
+        .allow_headers(vec![header::CONTENT_TYPE]);
 
     let app = Router::new()
         .route("/api/config", get(get_config).post(update_config))
+        .fallback(get(static_handler))
         .layer(cors)
         .with_state(state);
 
     let addr = "0.0.0.0:4444";
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    println!("PROMETHEUS ENFORCER ACTIVE: Listening on http://{}", addr);
+    println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
 
     axum::serve(listener, app).await.unwrap();
 }
