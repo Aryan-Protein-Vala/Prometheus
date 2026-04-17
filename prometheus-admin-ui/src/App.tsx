@@ -1,267 +1,169 @@
 import { useState, useEffect } from 'react';
-import { Lock, Shield, Server, Terminal, Key, ShieldAlert } from 'lucide-react';
+import { Shield, Network, ListTree, X, Plus, Terminal } from 'lucide-react';
 
-const API_URL = 'http://127.0.0.1:4444/api/config';
-
-type SecurityLog = {
-  path: string;
-  size: number;
-  type: string;
-};
-
-type ConfigData = {
-  blocked_domains: string[];
-  security_logs: SecurityLog[];
-};
+const API_URL = 'http://localhost:4444/api/config';
 
 export default function App() {
-  const [token, setToken] = useState<string>('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  
-  const [config, setConfig] = useState<ConfigData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'network' | 'audit'>('network');
+  const [activeTab, setActiveTab] = useState<'network' | 'logs'>('network');
+  const [blockedDomains, setBlockedDomains] = useState<string[]>([]);
   const [newDomain, setNewDomain] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const login = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  const fetchConfig = async () => {
     try {
-      const res = await fetch(API_URL, {
-        headers: {
-          'Authorization': `Bearer ${password}`
-        }
-      });
+      const res = await fetch(API_URL);
       if (res.ok) {
         const data = await res.json();
-        setConfig(data);
-        setToken(password);
-      } else {
-        setError('Invalid IT Admin credentials.');
+        setBlockedDomains(data.blocked_domains);
       }
     } catch (err) {
-      setError('Cannot connect to Prometheus-Enforcer daemon.');
+      console.error("Failed to connect to Prometheus Enforcer daemon.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const updateConfig = async (newDomains: string[]) => {
-    if (!token) return;
+  useEffect(() => {
+    fetchConfig();
+  }, []);
+
+  const updateConfig = async (updatedList: string[]) => {
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ blocked_domains: newDomains })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blocked_domains: updatedList })
       });
       if (res.ok) {
-        setConfig(prev => prev ? { ...prev, blocked_domains: newDomains } : null);
-        setNewDomain('');
+        setBlockedDomains(updatedList);
       } else {
-        alert('Failed to update enforcement config.');
+        const err = await res.text();
+        alert(`Error: ${err}`);
       }
-    } catch {
-      alert('Network error.');
+    } catch (err) {
+      alert("Network Error: Could not reach daemon.");
     }
   };
 
   const addDomain = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDomain || !config) return;
-    const cleanDomain = newDomain.trim().toLowerCase();
-    if (config.blocked_domains.includes(cleanDomain)) return;
-    updateConfig([...config.blocked_domains, cleanDomain]);
+    const domain = newDomain.trim().toLowerCase();
+    if (!domain || blockedDomains.includes(domain)) return;
+    const newList = [...blockedDomains, domain];
+    updateConfig(newList);
+    setNewDomain('');
   };
 
   const removeDomain = (domain: string) => {
-    if (!config) return;
-    updateConfig(config.blocked_domains.filter(d => d !== domain));
+    const newList = blockedDomains.filter(d => d !== domain);
+    updateConfig(newList);
   };
 
-  if (!token) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
-        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none" style={{
-          backgroundImage: 'radial-gradient(circle at 50% -20%, #38bdf8 0%, transparent 40%)'
-        }} />
-        <div className="w-full max-w-sm border border-muted bg-black/50 backdrop-blur pb-8 pt-10 px-8 z-10">
-          <div className="flex flex-col items-center mb-8">
-            <Shield className="w-8 h-8 text-accent mb-4 opacity-80" />
-            <h1 className="font-mono text-sm uppercase tracking-[0.3em] text-muted-foreground mb-1">PROMETHEUS</h1>
-            <h2 className="text-xl font-medium tracking-tight">ENFORCER</h2>
-          </div>
-          
-          <form onSubmit={login} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Admin Protocol</label>
-              <div className="relative">
-                <Key className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-muted/30 border border-muted text-sm px-10 py-2 outline-none focus:border-accent/50 transition-colors placeholder:text-muted-foreground/30 font-mono"
-                  placeholder="MASTER PASSWORD"
-                  autoFocus
-                />
-              </div>
-            </div>
-            {error && <div className="text-red-500 text-xs font-mono">{error}</div>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-white text-black font-medium text-xs font-mono uppercase tracking-widest py-3 hover:bg-accent hover:text-black transition-colors"
-            >
-              {loading ? 'Authenticating...' : 'Unlock Console'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row font-sans">
+    <div className="flex h-screen bg-[#0a0a0a] text-white">
+      {/* Pulse System Indicator */}
+      <div className="fixed top-8 right-8 flex items-center gap-3 z-50">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">System Active</span>
+        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse-slow shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+      </div>
+
       {/* Sidebar */}
-      <aside className="w-full md:w-64 border-r border-muted bg-black/40 flex flex-col shrink-0">
-        <div className="p-6 border-b border-muted flex items-center gap-3">
-          <Shield className="w-5 h-5 text-accent" />
-          <div className="flex flex-col">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Prometheus</span>
-            <span className="font-medium text-sm tracking-tight">IT ENFORCER</span>
-          </div>
+      <aside className="w-64 border-r border-[#1a1a1a] flex flex-col pt-8">
+        <div className="px-8 mb-12 flex items-center gap-3">
+          <Shield className="w-6 h-6" />
+          <span className="font-mono text-sm tracking-[0.4em] uppercase">Prometheus</span>
         </div>
-        <nav className="p-4 space-y-2 flex-1">
+
+        <nav className="flex-1 space-y-1 px-4">
           <button
             onClick={() => setActiveTab('network')}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === 'network' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-mono uppercase tracking-widest transition-all ${
+              activeTab === 'network' ? 'bg-white text-black' : 'text-neutral-500 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Server className="w-4 h-4" />
-            Network Enforcement
+            <Network className="w-4 h-4" />
+            Network Policy
           </button>
           <button
-            onClick={() => setActiveTab('audit')}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === 'audit' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            onClick={() => setActiveTab('logs')}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-mono uppercase tracking-widest transition-all ${
+              activeTab === 'logs' ? 'bg-white text-black' : 'text-neutral-500 hover:text-white hover:bg-white/5'
             }`}
           >
-            <ShieldAlert className="w-4 h-4" />
-            Security Audit Logs
+            <ListTree className="w-4 h-4" />
+            Security Logs
           </button>
         </nav>
-        <div className="p-4 border-t border-muted">
-          <button 
-            onClick={() => setToken('')}
-            className="flex items-center gap-2 text-xs font-mono text-muted-foreground hover:text-red-400 transition-colors"
-          >
-            <Lock className="w-3 h-3" />
-            Lock Console
-          </button>
+
+        <div className="p-8">
+          <div className="text-[8px] font-mono text-neutral-600 uppercase tracking-widest leading-relaxed">
+            Enterprise Enforcement Protocol<br />V1.0.0 Stable
+          </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-6 lg:p-10 max-h-screen overflow-y-auto">
-        <div className="max-w-4xl mx-auto">
-          {activeTab === 'network' && (
-            <div className="animate-in fade-in duration-500">
-              <header className="mb-8">
-                <h1 className="text-2xl font-medium tracking-tight mb-2">Network Enforcement</h1>
-                <p className="text-sm text-muted-foreground">Manage the global blocklist. Changes sync instantly to the OS hosts file across all deployed nodes.</p>
+      <main className="flex-1 overflow-y-auto pt-16 px-12 pb-12">
+        <div className="max-w-3xl">
+          {activeTab === 'network' ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
+              <header className="mb-12">
+                <h1 className="text-3xl font-light tracking-tight mb-2">Network Policy</h1>
+                <p className="text-neutral-500 text-sm">Synchronize domain blocklists across all enterprise endpoints via zero-route protocol.</p>
               </header>
 
-              <div className="border border-muted bg-black/20 p-6 mb-8">
-                <form onSubmit={addDomain} className="flex gap-4">
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      value={newDomain}
-                      onChange={e => setNewDomain(e.target.value)}
-                      placeholder="e.g. reddit.com"
-                      className="w-full bg-background border border-muted px-4 py-2 text-sm outline-none focus:border-accent/50 font-mono"
-                    />
-                  </div>
-                  <button type="submit" className="bg-white text-black px-6 py-2 text-xs font-mono uppercase font-medium hover:bg-accent hover:text-black transition-colors shrink-0">
-                    Enforce Rule
+              {/* Add Input */}
+              <section className="mb-12">
+                <form onSubmit={addDomain} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newDomain}
+                    onChange={(e) => setNewDomain(e.target.value)}
+                    placeholder="ENTER DOMAIN (E.G. YOUTUBE.COM)"
+                    className="flex-1 bg-transparent border border-[#262626] px-5 py-3 text-sm font-mono focus:border-white outline-none transition-all placeholder:text-neutral-700 uppercase"
+                  />
+                  <button type="submit" className="bg-white text-black px-8 py-3 text-[10px] font-mono font-bold uppercase tracking-widest hover:bg-neutral-200 transition-all flex items-center gap-2">
+                    <Plus className="w-3.5 h-3.5" />
+                    Enforce Policy
                   </button>
                 </form>
-              </div>
+              </section>
 
-              <div className="border border-muted bg-black/40">
-                <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-muted bg-muted/20 text-xs font-mono text-muted-foreground uppercase tracking-wider">
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-9">Target Domain</div>
-                  <div className="col-span-2 text-right">Actions</div>
+              {/* List */}
+              <div className="border border-[#1a1a1a] bg-black/40">
+                <div className="px-6 py-3 border-b border-[#1a1a1a] bg-[#111] flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Global Policy List</span>
+                  <span className="text-[10px] font-mono text-neutral-500">{blockedDomains.length} Active Targets</span>
                 </div>
-                <div className="divide-y divide-muted">
-                  {config?.blocked_domains.length === 0 && (
-                    <div className="px-6 py-8 text-center text-sm text-muted-foreground">No active enforcement rules.</div>
-                  )}
-                  {config?.blocked_domains.map(domain => (
-                    <div key={domain} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-muted/10 transition-colors">
-                      <div className="col-span-1 flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-                      </div>
-                      <div className="col-span-9 font-mono text-sm">
-                        {domain}
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <button 
+                <div className="divide-y divide-[#1a1a1a]">
+                  {loading ? (
+                    <div className="px-6 py-12 text-center text-xs font-mono text-neutral-600 animate-pulse">Initializing Data Stream...</div>
+                  ) : blockedDomains.length === 0 ? (
+                    <div className="px-6 py-16 text-center text-xs font-mono text-neutral-700">No active network enforcement rules found.</div>
+                  ) : (
+                    blockedDomains.map((domain) => (
+                      <div key={domain} className="px-6 py-4 flex items-center justify-between group hover:bg-white/[0.02] transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                          <span className="text-sm font-mono tracking-tight">{domain}</span>
+                        </div>
+                        <button
                           onClick={() => removeDomain(domain)}
-                          className="text-xs text-muted-foreground hover:text-red-400 font-mono"
+                          className="opacity-0 group-hover:opacity-100 p-2 text-neutral-500 hover:text-white transition-all"
                         >
-                          [REVOKE]
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </div>
-          )}
-
-          {activeTab === 'audit' && (
-            <div className="animate-in fade-in duration-500">
-              <header className="mb-8">
-                <h1 className="text-2xl font-medium tracking-tight mb-2">Security Audit Logs</h1>
-                <p className="text-sm text-muted-foreground">Exposed keys, environmental secrets, and database dumps detected across endpoints.</p>
-              </header>
-
-              <div className="border border-muted bg-black/40">
-                <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-muted bg-muted/20 text-xs font-mono text-muted-foreground uppercase tracking-wider">
-                  <div className="col-span-2">Severity</div>
-                  <div className="col-span-3">Leak Type</div>
-                  <div className="col-span-7">Absolute Path</div>
-                </div>
-                <div className="divide-y divide-muted">
-                  {(!config?.security_logs || config.security_logs.length === 0) && (
-                    <div className="px-6 py-12 text-center flex flex-col items-center">
-                      <Terminal className="w-8 h-8 text-muted-foreground/30 mb-3" />
-                      <span className="text-sm text-muted-foreground">No security leaks detected on this endpoint.</span>
-                    </div>
-                  )}
-                  {config?.security_logs?.map((log, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-muted/10 transition-colors">
-                      <div className="col-span-2 flex items-center gap-2">
-                        <ShieldAlert className="w-4 h-4 text-red-500" />
-                        <span className="text-xs uppercase tracking-widest text-red-500 font-medium">CRITICAL</span>
-                      </div>
-                      <div className="col-span-3 text-sm text-foreground">
-                        {log.type}
-                      </div>
-                      <div className="col-span-7 font-mono text-xs text-muted-foreground truncate" title={log.path}>
-                        {log.path}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          ) : (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 flex flex-col items-center justify-center pt-32 opacity-30">
+              <Terminal className="w-12 h-12 mb-6" />
+              <h2 className="text-sm font-mono uppercase tracking-[0.5em]">Waiting for Feed...</h2>
+              <p className="mt-4 text-[10px] font-mono uppercase tracking-widest">Security Audit Logs Will Appear Here After Endpoint Scan</p>
             </div>
           )}
         </div>

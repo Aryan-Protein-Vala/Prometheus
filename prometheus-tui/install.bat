@@ -1,7 +1,7 @@
 @echo off
 setlocal
 echo ═══════════════════════════════════════════════════════════════════════════
-echo  PROMETHEUS ENTERPRISE DEPLOYMENT
+echo  PROMETHEUS ENTERPRISE DEPLOYMENT (WINDOWS)
 echo ═══════════════════════════════════════════════════════════════════════════
 
 :: Check for Administrative privileges
@@ -13,47 +13,33 @@ if %errorLevel% neq 0 (
 )
 
 set INSTALL_DIR=C:\Program Files\Prometheus
-set CONFIG_DIR=C:\ProgramData\Prometheus
-set CONFIG_FILE=%CONFIG_DIR%\admin-config.json
 set ENFORCER_PATH=%INSTALL_DIR%\prometheus-enforcer.exe
+set DASHBOARD_URL=https://prometheus-cleaner.vercel.app
 
-:: Create directories
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
-if not exist "%CONFIG_DIR%" mkdir "%CONFIG_DIR%"
 
-echo  ◦ Downloading Client & Enforcer Binaries...
-:: MOCK: In production, curl from Github Release
+echo  ◦ Downloading Enterprise Binaries...
+:: Mock: copy artifacts to install dir
 copy /Y ".\target\release\prometheus.exe" "%INSTALL_DIR%\prometheus.exe" >nul 2>&1
-copy /Y "..\prometheus-enforcer\target\release\prometheus-enforcer.exe" "%ENFORCER_PATH%" >nul 2>&1
+copy /Y "..\target\release\prometheus-enforcer.exe" "%ENFORCER_PATH%" >nul 2>&1
 
-:: Set Path
+:: Create prometheus-admin shortcut
+echo @echo off > "%INSTALL_DIR%\prometheus-admin.bat"
+echo echo Launching Prometheus Enterprise Console... >> "%INSTALL_DIR%\prometheus-admin.bat"
+echo start %DASHBOARD_URL% >> "%INSTALL_DIR%\prometheus-admin.bat"
+
+:: Add to PATH
 setx PATH "%PATH%;%INSTALL_DIR%" /M >nul
 
-echo  ◦ Configuring Enterprise Rules...
-set /p ADMIN_PASSWORD="Enter Master Dashboard Password: "
-
-:: Quick pseudo-hash (For production, use a proper script or the enforcer to initialize this securely)
-:: We'll pass plaintext in this stub but the enforcer expects SHA256. 
-:: A real enterprise installer would invoke powershell to compute the sha256 hash
-for /f "delims=" %%a in ('powershell -Command "(Compute-Hash -Algorithm SHA256 -InputStream ([io.memorystream][text.encoding]::UTF8.GetBytes('%ADMIN_PASSWORD%'))).Hash -replace '-','' | ForEach-Object { $_.ToLower() }"') do set HASH=%%a
-
-if "%HASH%"=="" set HASH=%ADMIN_PASSWORD%
-
-echo { > "%CONFIG_FILE%"
-echo   "master_password_hash": "%HASH%", >> "%CONFIG_FILE%"
-echo   "blocked_domains": [] >> "%CONFIG_FILE%"
-echo } >> "%CONFIG_FILE%"
-
-:: Lock down permissions (SYSTEM and Administrators Full, Users Read)
-icacls "%CONFIG_FILE%" /inheritance:r /grant:r "SYSTEM:(F)" /grant:r "Administrators:(F)" /grant:r "Users:(R)" >nul
-
-echo  ◦ Registering Windows Service (Prometheus Enforcer)...
-:: We use sc.exe to create the service
+:: Register Service
 sc stop "PrometheusEnforcer" >nul 2>&1
 sc delete "PrometheusEnforcer" >nul 2>&1
 sc create "PrometheusEnforcer" binPath= "%ENFORCER_PATH%" start= auto DisplayName= "Prometheus Enterprise Enforcer" >nul
 sc start "PrometheusEnforcer" >nul
 
+echo.
 echo  ✓ Installation Complete
-echo  Enforcer running on http://127.0.0.1:4444
+echo  ─────────────────────────────────────
+echo  Run cleaner: prometheus
+echo  Run admin:   prometheus-admin
 pause

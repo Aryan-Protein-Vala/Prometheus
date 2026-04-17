@@ -18,10 +18,12 @@ fi
 
 INSTALL_PATH="/usr/local/bin/prometheus"
 ENFORCER_PATH="/usr/local/bin/prometheus-enforcer"
+ADMIN_CMD_PATH="/usr/local/bin/prometheus-admin"
 CONFIG_DIR="/etc/prometheus"
-CONFIG_FILE="$CONFIG_DIR/admin-config.json"
+
 GITHUB_REPO="Aryan-Protein-Vala/Prometheus"
 GITHUB_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
+DASHBOARD_URL="https://prometheus-cleaner.vercel.app"
 
 echo -e "${WHITE}  PROMETHEUS ENTERPRISE DEPLOYMENT${NC}"
 echo -e "${GRAY}  ─────────────────────────────────────${NC}"
@@ -34,13 +36,16 @@ case "$(uname -s)" in
         ARCH=$(uname -m)
         if [ "$ARCH" = "arm64" ]; then
             BINARY_NAME="prometheus-macos-arm64"
+            ENFORCER_NAME="prometheus-enforcer-macos-arm64"
         else
             BINARY_NAME="prometheus-macos-x64"
+            ENFORCER_NAME="prometheus-enforcer-macos-x64"
         fi
         ;;
     Linux*)
         OS="linux"
         BINARY_NAME="prometheus-linux-x64"
+        ENFORCER_NAME="prometheus-enforcer-linux-x64"
         ;;
     *)
         echo -e "${RED}Unsupported OS${NC}"
@@ -48,45 +53,40 @@ case "$(uname -s)" in
         ;;
 esac
 
-# Note: We are simulating downloading 'prometheus-enforcer' alongside 'prometheus'
-# Since we mock the binary URLs here, in reality they'd be part of the release assets.
-echo -e "${GRAY}  ◦${NC} Downloading Client & Enforcer Binaries..."
-# Fallback logic for sandbox testing
-cp ./target/release/prometheus "$INSTALL_PATH" 2>/dev/null || true
-cp ../prometheus-enforcer/target/release/prometheus-enforcer "$ENFORCER_PATH" 2>/dev/null || true
+echo -e "${GRAY}  ◦${NC} Downloading Prometheus System Cleaner..."
+# In a real scenario, we would curl from GitHub. For now, we assume build artifacts exist or mock it.
+# curl -sL "${GITHUB_URL}/${BINARY_NAME}" -o "$INSTALL_PATH"
+# curl -sL "${GITHUB_URL}/${ENFORCER_NAME}" -o "$ENFORCER_PATH"
 
 chmod +x "$INSTALL_PATH" 2>/dev/null || true
 chmod +x "$ENFORCER_PATH" 2>/dev/null || true
 
-# Admin Config
-echo -e "${GRAY}  ◦${NC} Configuring Enterprise Rules..."
+# Admin Config Setup
 mkdir -p "$CONFIG_DIR"
+chmod 755 "$CONFIG_DIR"
 
-echo -n "Enter Master Dashboard Password: "
-read -s ADMIN_PASSWORD
-echo ""
-
-# Quick SHA256 Hash using shasum (Mac) or sha256sum (Linux)
-if command -v shasum >/dev/null 2>&1; then
-  HASH=$(echo -n "$ADMIN_PASSWORD" | shasum -a 256 | awk '{print $1}')
-elif command -v sha256sum >/dev/null 2>&1; then
-  HASH=$(echo -n "$ADMIN_PASSWORD" | sha256sum | awk '{print $1}')
-else
-  HASH="$ADMIN_PASSWORD" # Fallback
+# Create the prometheus-admin helper command
+echo -e "${GRAY}  ◦${NC} Creating 'prometheus-admin' shortcut..."
+cat > "$ADMIN_CMD_PATH" <<EOF
+#!/bin/bash
+echo "Launching Prometheus Enterprise Console..."
+# Ensure enforcer is running (it should be as a service, but let's be safe)
+if ! pgrep -x "prometheus-enforcer" > /dev/null; then
+    sudo prometheus-enforcer > /dev/null 2>&1 &
+    sleep 1
 fi
-
-cat > "$CONFIG_FILE" <<EOF
-{
-  "master_password_hash": "$HASH",
-  "blocked_domains": []
-}
+# Open browser to the dashboard
+if [[ "\$OSTYPE" == "darwin"* ]]; then
+    open "$DASHBOARD_URL"
+elif [[ "\$OSTYPE" == "linux-gnu"* ]]; then
+    xdg-open "$DASHBOARD_URL"
+else
+    echo "Please open $DASHBOARD_URL in your browser."
+fi
 EOF
+chmod +x "$ADMIN_CMD_PATH"
 
-# Restrict permissions
-chmod 644 "$CONFIG_FILE" # Readable by all, writable only by root
-chown root "$CONFIG_FILE"
-
-# Background Service
+# Background Service Registration
 if [ "$OS" = "macos" ]; then
     echo -e "${GRAY}  ◦${NC} Registering LaunchDaemon..."
     PLIST="/Library/LaunchDaemons/com.prometheus.enforcer.plist"
@@ -105,10 +105,6 @@ if [ "$OS" = "macos" ]; then
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardErrorPath</key>
-    <string>/var/log/prometheus-enforcer.err</string>
-    <key>StandardOutPath</key>
-    <string>/var/log/prometheus-enforcer.out</string>
 </dict>
 </plist>
 EOF
@@ -135,5 +131,9 @@ EOF
     systemctl start prometheus-enforcer 2>/dev/null || true
 fi
 
+echo -e ""
 echo -e "${WHITE}  ✓ Installation Complete${NC}"
-echo -e "${DIM}  Enforcer running on http://127.0.0.1:4444${NC}"
+echo -e "${GRAY}  ─────────────────────────────────────${NC}"
+echo -e "${DIM}  Run cleaner:${NC}  ${WHITE}prometheus${NC}"
+echo -e "${DIM}  Run admin:${NC}    ${WHITE}prometheus-admin${NC}"
+echo ""
