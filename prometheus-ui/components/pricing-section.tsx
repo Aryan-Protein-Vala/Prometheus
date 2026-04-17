@@ -30,6 +30,7 @@ interface Plan {
 export function PricingSection() {
     const sectionRef = useRef<HTMLElement>(null)
     const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null)
+    const [showEnterpriseContact, setShowEnterpriseContact] = useState(false)
 
     useEffect(() => {
         const section = sectionRef.current
@@ -131,12 +132,31 @@ export function PricingSection() {
                                 ))}
                             </ul>
 
-                            <Button
-                                onClick={() => openPayment({ name: 'Enterprise Fleet', price: 999 })}
-                                className="w-full bg-white text-black hover:bg-neutral-200 py-6 text-xs uppercase font-bold tracking-[0.2em] shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                            >
-                                Deploy to Fleet
-                            </Button>
+                            {showEnterpriseContact ? (
+                                <div className="space-y-4 p-6 border border-white/20 bg-white/5 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-mono">Bulk Licensing Protocol</p>
+                                        <p className="text-sm font-medium text-white tracking-tight">Contact for Fleet Deployment</p>
+                                    </div>
+                                    <div className="space-y-2 pt-2 border-t border-white/10">
+                                        <p className="text-lg font-light text-white tracking-widest">+91 9315465182</p>
+                                        <p className="text-xs text-neutral-400 font-mono">aryansharma24112003@gmail.com</p>
+                                    </div>
+                                    <Button 
+                                        onClick={() => setShowEnterpriseContact(false)}
+                                        className="w-full mt-2 h-8 text-[9px] uppercase tracking-widest bg-transparent border border-white/10 text-neutral-500 hover:text-white transition-all"
+                                    >
+                                        Back to Plans
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    onClick={() => setShowEnterpriseContact(true)}
+                                    className="w-full bg-white text-black hover:bg-neutral-200 py-6 text-xs uppercase font-bold tracking-[0.2em] shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                >
+                                    Deploy to Fleet
+                                </Button>
+                            )}
 
                             <p className="mt-6 text-center text-[9px] text-neutral-700 font-mono tracking-tighter uppercase leading-relaxed">
                                 License includes administrative audit rights per provisioned endpoint.

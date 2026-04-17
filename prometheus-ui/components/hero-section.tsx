@@ -97,11 +97,11 @@ export function HeroSection() {
 
       {/* Headline */}
       <div className="mb-8 text-center">
-        <h1 className="text-5xl font-medium tracking-tight text-foreground md:text-7xl lg:text-8xl">
+        <h1 className="text-4xl font-medium tracking-tight text-foreground md:text-6xl lg:text-7xl">
           <FadeInText text="The Ultimate" delay={200} />
         </h1>
         <div className="relative mt-4 inline-block">
-          <h1 className="relative z-10 text-5xl font-medium tracking-tight md:text-7xl lg:text-8xl text-foreground">
+          <h1 className="relative z-10 text-4xl font-medium tracking-tight md:text-6xl lg:text-7xl text-foreground">
             <FadeInText text="Corporate Security Enforcer." delay={400} />
           </h1>
           {/* Animated underline accent */}

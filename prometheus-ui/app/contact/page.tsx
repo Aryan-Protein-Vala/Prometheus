@@ -56,6 +56,11 @@ export default function ContactPage() {
                         </section>
 
                         <section>
+                            <h2 className="text-lg font-semibold text-foreground">Phone</h2>
+                            <p className="mt-2 text-muted-foreground">+91 9315465182</p>
+                        </section>
+
+                        <section>
                             <h2 className="text-lg font-semibold text-foreground">Response Time</h2>
                             <p className="mt-2 text-muted-foreground">
                                 We typically respond within 24-48 hours during business days.

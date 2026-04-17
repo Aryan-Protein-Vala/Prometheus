@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Shield, Network, ListTree, X, Plus, Terminal } from 'lucide-react';
+import { Shield, Network, ListTree, X, Plus, Terminal, Monitor } from 'lucide-react';
 
 const API_URL = 'http://localhost:4444/api/config';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'network' | 'logs'>('network');
+  const [activeTab, setActiveTab] = useState<'access' | 'logs'>('access');
   const [blockedDomains, setBlockedDomains] = useState<string[]>([]);
+  const [blockedApps, setBlockedApps] = useState<string[]>([]);
   const [newDomain, setNewDomain] = useState('');
+  const [newApp, setNewApp] = useState('');
   const [loading, setLoading] = useState(true);
 
   const fetchConfig = async () => {
@@ -14,7 +16,8 @@ export default function App() {
       const res = await fetch(API_URL);
       if (res.ok) {
         const data = await res.json();
-        setBlockedDomains(data.blocked_domains);
+        setBlockedDomains(data.blocked_domains || []);
+        setBlockedApps(data.blocked_apps || []);
       }
     } catch (err) {
       console.error("Failed to connect to Prometheus Enforcer daemon.");
@@ -27,15 +30,19 @@ export default function App() {
     fetchConfig();
   }, []);
 
-  const updateConfig = async (updatedList: string[]) => {
+  const updateConfig = async (domains: string[], apps: string[]) => {
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blocked_domains: updatedList })
+        body: JSON.stringify({ 
+          blocked_domains: domains,
+          blocked_apps: apps 
+        })
       });
       if (res.ok) {
-        setBlockedDomains(updatedList);
+        setBlockedDomains(domains);
+        setBlockedApps(apps);
       } else {
         const err = await res.text();
         alert(`Error: ${err}`);
@@ -47,45 +54,36 @@ export default function App() {
 
   const sanitizeDomain = (input: string): string => {
     let cleaned = input.trim().toLowerCase();
-    
-    // Remove protocol
     cleaned = cleaned.replace(/^(https?:\/\/)/, '');
-    
-    // Split by / to remove path/query and take the first part (host)
     cleaned = cleaned.split('/')[0];
-    
-    // Split by @ to remove credentials if any
     cleaned = cleaned.split('@').pop() || '';
-    
-    // Remove port if any
     cleaned = cleaned.split(':')[0];
-    
-    // Remove leading 'www.'
-    if (cleaned.startsWith('www.')) {
-      cleaned = cleaned.substring(4);
-    }
-    
+    if (cleaned.startsWith('www.')) cleaned = cleaned.substring(4);
     return cleaned;
   };
 
   const addDomain = (e: React.FormEvent) => {
     e.preventDefault();
     const domain = sanitizeDomain(newDomain);
-    
-    if (!domain) return;
-    if (blockedDomains.includes(domain)) {
-      setNewDomain('');
-      return;
-    }
-    
-    const newList = [...blockedDomains, domain];
-    updateConfig(newList);
+    if (!domain || blockedDomains.includes(domain)) return;
+    updateConfig([...blockedDomains, domain], blockedApps);
     setNewDomain('');
   };
 
+  const addApp = (e: React.FormEvent) => {
+    e.preventDefault();
+    const app = newApp.trim();
+    if (!app || blockedApps.includes(app)) return;
+    updateConfig(blockedDomains, [...blockedApps, app]);
+    setNewApp('');
+  };
+
   const removeDomain = (domain: string) => {
-    const newList = blockedDomains.filter(d => d !== domain);
-    updateConfig(newList);
+    updateConfig(blockedDomains.filter(d => d !== domain), blockedApps);
+  };
+
+  const removeApp = (app: string) => {
+    updateConfig(blockedDomains, blockedApps.filter(a => a !== app));
   };
 
   return (
@@ -105,13 +103,13 @@ export default function App() {
 
         <nav className="flex-1 space-y-1 px-4">
           <button
-            onClick={() => setActiveTab('network')}
+            onClick={() => setActiveTab('access')}
             className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-mono uppercase tracking-widest transition-all ${
-              activeTab === 'network' ? 'bg-white text-black' : 'text-neutral-500 hover:text-white hover:bg-white/5'
+              activeTab === 'access' ? 'bg-white text-black' : 'text-neutral-500 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Network className="w-4 h-4" />
-            Network Policy
+            <Shield className="w-4 h-4" />
+            Access Policies
           </button>
           <button
             onClick={() => setActiveTab('logs')}
@@ -133,65 +131,108 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-16 px-12 pb-12">
-        <div className="max-w-3xl">
-          {activeTab === 'network' ? (
+        <div className="max-w-5xl">
+          {activeTab === 'access' ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
               <header className="mb-12">
-                <h1 className="text-3xl font-light tracking-tight mb-2">Network Policy</h1>
-                <p className="text-neutral-500 text-sm">Synchronize domain blocklists across all enterprise endpoints via zero-route protocol.</p>
+                <h1 className="text-3xl font-light tracking-tight mb-2">Access Policies</h1>
+                <p className="text-neutral-500 text-sm">Synchronize web and application restrictions across the enterprise fleet.</p>
                 <div className="mt-4 p-3 border border-emerald-500/10 bg-emerald-500/5 flex items-center gap-3">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <p className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest">
-                    Pro-Tip: Disable "DNS-over-HTTPS" in browser settings for 100% enforcement.
+                    Policy Engine: Unified Enforcement Active
                   </p>
                 </div>
               </header>
 
-              {/* Add Input */}
-              <section className="mb-12">
-                <form onSubmit={addDomain} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newDomain}
-                    onChange={(e) => setNewDomain(e.target.value)}
-                    placeholder="ENTER DOMAIN (E.G. YOUTUBE.COM)"
-                    className="flex-1 bg-transparent border border-[#262626] px-5 py-3 text-sm font-mono focus:border-white outline-none transition-all placeholder:text-neutral-700 uppercase"
-                  />
-                  <button type="submit" className="bg-white text-black px-8 py-3 text-[10px] font-mono font-bold uppercase tracking-widest hover:bg-neutral-200 transition-all flex items-center gap-2">
-                    <Plus className="w-3.5 h-3.5" />
-                    Enforce Policy
-                  </button>
-                </form>
-              </section>
+              <div className="grid md:grid-cols-2 gap-8">
+                {/* Network Blocklist */}
+                <section>
+                  <div className="flex items-center gap-2 mb-6">
+                    <Network className="w-4 h-4 text-neutral-500" />
+                    <h2 className="text-xs font-mono uppercase tracking-[0.2em] text-neutral-400">Web Domains</h2>
+                  </div>
+                  
+                  <form onSubmit={addDomain} className="flex gap-2 mb-6">
+                    <input
+                      type="text"
+                      value={newDomain}
+                      onChange={(e) => setNewDomain(e.target.value)}
+                      placeholder="DOMAIN (E.G. FACEBOOK.COM)"
+                      className="flex-1 bg-transparent border border-[#262626] px-4 py-3 text-xs font-mono focus:border-white outline-none transition-all placeholder:text-neutral-700 uppercase"
+                    />
+                    <button type="submit" className="bg-white text-black px-4 py-3 text-[10px] font-mono font-bold uppercase tracking-widest hover:bg-neutral-200 transition-all">
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
 
-              {/* List */}
-              <div className="border border-[#1a1a1a] bg-black/40">
-                <div className="px-6 py-3 border-b border-[#1a1a1a] bg-[#111] flex items-center justify-between">
-                  <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Global Policy List</span>
-                  <span className="text-[10px] font-mono text-neutral-500">{blockedDomains.length} Active Targets</span>
-                </div>
-                <div className="divide-y divide-[#1a1a1a]">
-                  {loading ? (
-                    <div className="px-6 py-12 text-center text-xs font-mono text-neutral-600 animate-pulse">Initializing Data Stream...</div>
-                  ) : blockedDomains.length === 0 ? (
-                    <div className="px-6 py-16 text-center text-xs font-mono text-neutral-700">No active network enforcement rules found.</div>
-                  ) : (
-                    blockedDomains.map((domain) => (
-                      <div key={domain} className="px-6 py-4 flex items-center justify-between group hover:bg-white/[0.02] transition-all">
-                        <div className="flex items-center gap-4">
-                          <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                          <span className="text-sm font-mono tracking-tight">{domain}</span>
-                        </div>
-                        <button
-                          onClick={() => removeDomain(domain)}
-                          className="opacity-0 group-hover:opacity-100 p-2 text-neutral-500 hover:text-white transition-all"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
+                  <div className="border border-[#1a1a1a] bg-black/40">
+                    <div className="px-4 py-2 border-b border-[#1a1a1a] bg-[#111] flex items-center justify-between">
+                      <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest">DNS Blocklist</span>
+                      <span className="text-[8px] font-mono text-neutral-500">{blockedDomains.length} Targets</span>
+                    </div>
+                    <div className="divide-y divide-[#1a1a1a] max-h-[400px] overflow-y-auto">
+                      {loading ? (
+                        <div className="px-6 py-8 text-center text-xs font-mono text-neutral-600 animate-pulse">Scanning...</div>
+                      ) : blockedDomains.length === 0 ? (
+                        <div className="px-6 py-12 text-center text-[10px] font-mono text-neutral-700 uppercase">DNS Filter Empty</div>
+                      ) : (
+                        blockedDomains.map((domain) => (
+                          <div key={domain} className="px-4 py-3 flex items-center justify-between group hover:bg-white/[0.02] transition-all">
+                            <span className="text-xs font-mono tracking-tight text-neutral-300">{domain}</span>
+                            <button onClick={() => removeDomain(domain)} className="opacity-0 group-hover:opacity-100 p-1 text-neutral-500 hover:text-white transition-all">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                {/* Application Blocklist */}
+                <section>
+                  <div className="flex items-center gap-2 mb-6">
+                    <Monitor className="w-4 h-4 text-neutral-500" />
+                    <h2 className="text-xs font-mono uppercase tracking-[0.2em] text-neutral-400">Desktop Applications</h2>
+                  </div>
+                  
+                  <form onSubmit={addApp} className="flex gap-2 mb-6">
+                    <input
+                      type="text"
+                      value={newApp}
+                      onChange={(e) => setNewApp(e.target.value)}
+                      placeholder="APP NAME (E.G. DISCORD)"
+                      className="flex-1 bg-transparent border border-[#262626] px-4 py-3 text-xs font-mono focus:border-white outline-none transition-all placeholder:text-neutral-700 uppercase"
+                    />
+                    <button type="submit" className="bg-white text-black px-4 py-3 text-[10px] font-mono font-bold uppercase tracking-widest hover:bg-neutral-200 transition-all">
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+
+                  <div className="border border-[#1a1a1a] bg-black/40">
+                    <div className="px-4 py-2 border-b border-[#1a1a1a] bg-[#111] flex items-center justify-between">
+                      <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest">Process Killer</span>
+                      <span className="text-[8px] font-mono text-neutral-500">{blockedApps.length} Targets</span>
+                    </div>
+                    <div className="divide-y divide-[#1a1a1a] max-h-[400px] overflow-y-auto">
+                      {loading ? (
+                        <div className="px-6 py-8 text-center text-xs font-mono text-neutral-600 animate-pulse">Scanning...</div>
+                      ) : blockedApps.length === 0 ? (
+                        <div className="px-6 py-12 text-center text-[10px] font-mono text-neutral-700 uppercase">No Apps Blocked</div>
+                      ) : (
+                        blockedApps.map((app) => (
+                          <div key={app} className="px-4 py-3 flex items-center justify-between group hover:bg-white/[0.02] transition-all">
+                            <span className="text-xs font-mono tracking-tight text-neutral-300">{app}</span>
+                            <button onClick={() => removeApp(app)} className="opacity-0 group-hover:opacity-100 p-1 text-neutral-500 hover:text-white transition-all">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
           ) : (

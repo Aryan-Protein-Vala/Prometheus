@@ -23,11 +23,13 @@ struct Assets;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Config {
     blocked_domains: Vec<String>,
+    blocked_apps: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct ConfigResponse {
     blocked_domains: Vec<String>,
+    blocked_apps: Vec<String>,
     security_logs: serde_json::Value,
 }
 
@@ -159,6 +161,7 @@ async fn get_config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> 
 
     Json(ConfigResponse {
         blocked_domains: config.blocked_domains.clone(),
+        blocked_apps: config.blocked_apps.clone(),
         security_logs,
     })
 }
@@ -169,6 +172,7 @@ async fn update_config(
 ) -> (StatusCode, String) {
     let mut config = state.config.lock().await;
     config.blocked_domains = payload.blocked_domains;
+    config.blocked_apps = payload.blocked_apps;
 
     if let Some(parent) = state.config_path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -209,6 +213,41 @@ async fn static_handler(uri: Uri) -> impl IntoResponse {
     }
 }
 
+async fn start_app_killer(state: Arc<AppState>) {
+    use sysinfo::{System, ProcessesToUpdate};
+    let mut sys = System::new_all();
+    
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        sys.refresh_processes(ProcessesToUpdate::All, true);
+        
+        let blocked_apps = {
+            let config = state.config.lock().await;
+            config.blocked_apps.clone()
+        };
+        
+        if blocked_apps.is_empty() {
+            continue;
+        }
+
+        for (_pid, process) in sys.processes() {
+            let proc_name = process.name().to_string_lossy().to_lowercase();
+            // Normalize name (remove .exe or .app)
+            let clean_name = proc_name.trim_end_matches(".exe")
+                                     .trim_end_matches(".app")
+                                     .to_string();
+            
+            for app in &blocked_apps {
+                let target = app.to_lowercase();
+                if clean_name == target || clean_name.contains(&target) {
+                    println!("[ENFORCER] TERMINATING BLOCKED APPLICATION: {}", clean_name);
+                    process.kill();
+                }
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let config_path = get_config_path();
@@ -218,9 +257,9 @@ async fn main() {
         fs::read_to_string(&config_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(Config { blocked_domains: vec![] })
+            .unwrap_or(Config { blocked_domains: vec![], blocked_apps: vec![] })
     } else {
-        Config { blocked_domains: vec![] }
+        Config { blocked_domains: vec![], blocked_apps: vec![] }
     };
 
     let state = Arc::new(AppState {
@@ -228,6 +267,9 @@ async fn main() {
         config_path,
         logs_path,
     });
+
+    // Spawn the Application Execution Blocker
+    tokio::spawn(start_app_killer(state.clone()));
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
