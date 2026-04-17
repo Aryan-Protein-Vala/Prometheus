@@ -46,22 +46,25 @@ const HOSTS_FILE: &str = r"C:\Windows\System32\drivers\etc\hosts";
 const HOSTS_FILE: &str = "/etc/hosts";
 
 fn get_config_path() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".config").join("prometheus").join("admin.json")
-    } else {
-        PathBuf::from("admin.json")
-    }
+    #[cfg(target_os = "macos")]
+    { PathBuf::from("/Users/Shared/prometheus-admin.json") }
+    #[cfg(target_os = "linux")]
+    { PathBuf::from("/tmp/prometheus-admin.json") }
+    #[cfg(target_os = "windows")]
+    { PathBuf::from(r"C:\ProgramData\Prometheus\admin.json") }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    { PathBuf::from("admin.json") }
 }
 
 fn get_logs_path() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".config").join("prometheus").join("security-logs.json")
-    } else {
-        #[cfg(target_os = "windows")]
-        { PathBuf::from(r"C:\ProgramData\Prometheus\security-logs.json") }
-        #[cfg(not(target_os = "windows"))]
-        { PathBuf::from("/etc/prometheus/security-logs.json") }
-    }
+    #[cfg(target_os = "macos")]
+    { PathBuf::from("/Users/Shared/security-logs.json") }
+    #[cfg(target_os = "linux")]
+    { PathBuf::from("/tmp/security-logs.json") }
+    #[cfg(target_os = "windows")]
+    { PathBuf::from(r"C:\ProgramData\Prometheus\security-logs.json") }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    { PathBuf::from("security-logs.json") }
 }
 
 async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
@@ -119,8 +122,6 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
 
 async fn get_config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> {
     let config = state.config.lock().await;
-    
-    // Read dynamic security logs if they exist
     let security_logs = if state.logs_path.exists() {
         fs::read_to_string(&state.logs_path)
             .ok()
@@ -164,27 +165,21 @@ async fn update_config(
 
 async fn static_handler(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
-
-    if path.is_empty() || path == "index.html" {
-        return index_html().await;
-    }
+    let path = if path.is_empty() { "index.html" } else { path };
 
     match Assets::get(path) {
         Some(content) => {
             let mime = mime_guess::from_path(path).first_or_octet_stream();
-            Response::builder()
-                .header(header::CONTENT_TYPE, mime.as_ref())
-                .body(axum::body::Body::from(content.data))
-                .unwrap()
+            ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
         }
-        None => index_html().await,
-    }
-}
-
-async fn index_html() -> Response {
-    match Assets::get("index.html") {
-        Some(content) => Html(content.data).into_response(),
-        None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+        None => {
+            // React SPA Fallback: If a file isn't found, serve index.html
+            if let Some(index) = Assets::get("index.html") {
+                Html(index.data).into_response()
+            } else {
+                (StatusCode::NOT_FOUND, "404 Not Found").into_response()
+            }
+        }
     }
 }
 
