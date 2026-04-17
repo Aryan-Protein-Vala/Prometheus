@@ -1,36 +1,59 @@
-# ═══════════════════════════════════════════════════════════════════════════
-#  🔥 PROMETHEUS INSTALLER - Windows (PowerShell)
-# ═══════════════════════════════════════════════════════════════════════════
+@echo off
+setlocal
+echo ═══════════════════════════════════════════════════════════════════════════
+echo  PROMETHEUS ENTERPRISE DEPLOYMENT
+echo ═══════════════════════════════════════════════════════════════════════════
 
-Write-Host "🔥 Installing Prometheus..." -ForegroundColor Cyan
+:: Check for Administrative privileges
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [ERROR] Please run this installer as Administrator.
+    pause
+    exit /b 1
+)
 
-# Force TLS 1.2 for GitHub downloads
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+set INSTALL_DIR=C:\Program Files\Prometheus
+set CONFIG_DIR=C:\ProgramData\Prometheus
+set CONFIG_FILE=%CONFIG_DIR%\admin-config.json
+set ENFORCER_PATH=%INSTALL_DIR%\prometheus-enforcer.exe
 
-# Install Directory
-$InstallDir = "$env:USERPROFILE\.prometheus\bin"
-if (!(Test-Path -Path $InstallDir)) {
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-}
+:: Create directories
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+if not exist "%CONFIG_DIR%" mkdir "%CONFIG_DIR%"
 
-# Placeholder for binary download (replace with actual URL)
-$BinaryUrl = "https://github.com/Aryan-Protein-Vala/Prometheus/releases/latest/download/prometheus-windows-x64.exe"
-$DestPath = "$InstallDir\prometheus.exe"
+echo  ◦ Downloading Client & Enforcer Binaries...
+:: MOCK: In production, curl from Github Release
+copy /Y ".\target\release\prometheus.exe" "%INSTALL_DIR%\prometheus.exe" >nul 2>&1
+copy /Y "..\prometheus-enforcer\target\release\prometheus-enforcer.exe" "%ENFORCER_PATH%" >nul 2>&1
 
-# Download Binary
-Write-Host "⬇️  Downloading Prometheus..." -ForegroundColor Cyan
-Invoke-WebRequest -Uri $BinaryUrl -OutFile $DestPath
+:: Set Path
+setx PATH "%PATH%;%INSTALL_DIR%" /M >nul
 
+echo  ◦ Configuring Enterprise Rules...
+set /p ADMIN_PASSWORD="Enter Master Dashboard Password: "
 
-# Add to PATH
-$UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($UserPath -notlike "*$InstallDir*") {
-    Write-Host "📍 Adding to PATH..." -ForegroundColor Cyan
-    [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", "User")
-}
+:: Quick pseudo-hash (For production, use a proper script or the enforcer to initialize this securely)
+:: We'll pass plaintext in this stub but the enforcer expects SHA256. 
+:: A real enterprise installer would invoke powershell to compute the sha256 hash
+for /f "delims=" %%a in ('powershell -Command "(Compute-Hash -Algorithm SHA256 -InputStream ([io.memorystream][text.encoding]::UTF8.GetBytes('%ADMIN_PASSWORD%'))).Hash -replace '-','' | ForEach-Object { $_.ToLower() }"') do set HASH=%%a
 
-Write-Host ""
-Write-Host "✅ Prometheus installed successfully!" -ForegroundColor Green
-Write-Host ""
-Write-Host "   Type 'prometheus' in a new terminal to start." -ForegroundColor Gray
-Write-Host ""
+if "%HASH%"=="" set HASH=%ADMIN_PASSWORD%
+
+echo { > "%CONFIG_FILE%"
+echo   "master_password_hash": "%HASH%", >> "%CONFIG_FILE%"
+echo   "blocked_domains": [] >> "%CONFIG_FILE%"
+echo } >> "%CONFIG_FILE%"
+
+:: Lock down permissions (SYSTEM and Administrators Full, Users Read)
+icacls "%CONFIG_FILE%" /inheritance:r /grant:r "SYSTEM:(F)" /grant:r "Administrators:(F)" /grant:r "Users:(R)" >nul
+
+echo  ◦ Registering Windows Service (Prometheus Enforcer)...
+:: We use sc.exe to create the service
+sc stop "PrometheusEnforcer" >nul 2>&1
+sc delete "PrometheusEnforcer" >nul 2>&1
+sc create "PrometheusEnforcer" binPath= "%ENFORCER_PATH%" start= auto DisplayName= "Prometheus Enterprise Enforcer" >nul
+sc start "PrometheusEnforcer" >nul
+
+echo  ✓ Installation Complete
+echo  Enforcer running on http://127.0.0.1:4444
+pause

@@ -2376,6 +2376,29 @@ fn main() -> io::Result<()> {
                         }
                     }
                     Ok(ScanMessage::Complete) => {
+                        // Export security logs for the prometheus-enforcer daemon
+                        if let Some(sec_cat) = state.categories.iter().find(|c| matches!(c.category, JunkCategory::SecurityRisks)) {
+                            let logs: Vec<serde_json::Value> = sec_cat.items.iter().map(|item| {
+                                serde_json::json!({
+                                    "path": item.path.to_string_lossy().to_string(),
+                                    "size": item.size,
+                                    "type": item.junk_type
+                                })
+                            }).collect();
+                            
+                            let logs_dir = if cfg!(target_os = "windows") {
+                                PathBuf::from(r"C:\ProgramData\Prometheus")
+                            } else {
+                                dirs::home_dir().unwrap_or_default().join(".config").join("prometheus")
+                            };
+                            
+                            let _ = std::fs::create_dir_all(&logs_dir);
+                            let _ = std::fs::write(
+                                logs_dir.join("security-logs.json"), 
+                                serde_json::to_string_pretty(&logs).unwrap_or_default()
+                            );
+                        }
+
                         state.scan_status = ScanStatus::Complete;
                         state.view = AppView::Results;
                         state.tree_position = TreePosition::Category(0);

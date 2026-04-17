@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "prometheus-tui",
+    "prometheus-enforcer"
+]
