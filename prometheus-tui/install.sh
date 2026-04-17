@@ -112,11 +112,16 @@ if [ "$OS" = "macos" ]; then
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/Shared/prometheus-enforcer.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/Shared/prometheus-enforcer.log</string>
 </dict>
 </plist>
 EOF
-    launchctl unload "$PLIST" 2>/dev/null || true
-    launchctl load -w "$PLIST" 2>/dev/null || true
+    # Force unload and reload to ensure new config takes effect
+    launchctl bootout system "$PLIST" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
+    launchctl bootstrap system "$PLIST" 2>/dev/null || launchctl load -w "$PLIST" 2>/dev/null || true
 elif [ "$OS" = "linux" ]; then
     echo -e "${GRAY}  ◦${NC} Registering Systemd Service..."
     SERVICE="/etc/systemd/system/prometheus-enforcer.service"

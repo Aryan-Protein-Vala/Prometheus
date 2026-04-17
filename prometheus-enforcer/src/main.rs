@@ -241,8 +241,19 @@ async fn main() {
         .with_state(state);
 
     let addr = "0.0.0.0:4444";
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
-
-    axum::serve(listener, app).await.unwrap();
+    match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => {
+            println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
+            if let Err(e) = axum::serve(listener, app).await {
+                eprintln!("SERVER ERROR: {}", e);
+            }
+        }
+        Err(e) => {
+            eprintln!("FATAL: Could not bind to {}: {}", addr, e);
+            // On macOS/Linux, we can try to log this to a known absolute path
+            let log_path = "/Users/Shared/prometheus-enforcer-error.log";
+            let _ = fs::write(log_path, format!("CRITICAL BIND ERROR: {}\n", e));
+            std::process::exit(1);
+        }
+    }
 }
