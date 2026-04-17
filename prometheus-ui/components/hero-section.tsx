@@ -34,7 +34,7 @@ const platformData = {
       "Open Terminal (Cmd + Space, type 'Terminal')",
       "Run this command:",
     ],
-    command: "curl -sL https://prometheus-cleaner.vercel.app/install.sh | bash",
+    command: "sudo curl -sL https://prometheus-cleaner.vercel.app/install.sh | sudo bash",
     notes: [
       "Works on Intel & Apple Silicon",
       "Requires macOS 11.0 or later",
@@ -51,8 +51,8 @@ const platformData = {
     command: "irm https://prometheus-cleaner.vercel.app/install.ps1 | iex",
     notes: [
       "Requires Windows 10/11",
-      "May need to allow script execution",
-      "Installs to C:\\Users\\YourName\\.prometheus\\",
+      "Must be run with Admin privileges",
+      "Installs to C:\\Program Files\\Prometheus\\",
     ],
   },
   linux: {
@@ -62,11 +62,11 @@ const platformData = {
       "Open your terminal",
       "Run this command:",
     ],
-    command: "curl -sL https://prometheus-cleaner.vercel.app/install.sh | bash",
+    command: "sudo curl -sL https://prometheus-cleaner.vercel.app/install.sh | sudo bash",
     notes: [
       "Works on Ubuntu, Debian, Fedora, Arch",
-      "Requires sudo for /usr/local/bin install",
-      "Or install locally to ~/.local/bin",
+      "Requires root for hosts manipulation",
+      "Installs system-wide enforcer daemon",
     ],
   },
 }
@@ -98,11 +98,11 @@ export function HeroSection() {
       {/* Headline */}
       <div className="mb-8 text-center">
         <h1 className="text-5xl font-medium tracking-tight text-foreground md:text-7xl lg:text-8xl">
-          <FadeInText text="Your OS." delay={200} />
+          <FadeInText text="The Ultimate" delay={200} />
         </h1>
         <div className="relative mt-4 inline-block">
           <h1 className="relative z-10 text-5xl font-medium tracking-tight md:text-7xl lg:text-8xl text-foreground">
-            <FadeInText text="Surgically Clean." delay={400} />
+            <FadeInText text="Corporate Security Enforcer." delay={400} />
           </h1>
           {/* Animated underline accent */}
           <div className="absolute -bottom-2 left-0 h-px w-full overflow-hidden md:-bottom-3">
@@ -114,16 +114,12 @@ export function HeroSection() {
               }}
             />
           </div>
-          {/* Subtle glow behind text */}
-          <div className="absolute inset-0 -z-10 blur-3xl opacity-20">
-            <div className="h-full w-full bg-gradient-to-r from-muted-foreground/50 via-foreground/30 to-muted-foreground/50" />
-          </div>
         </div>
       </div>
 
       {/* Subhead */}
-      <p className="mb-12 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
-        <FadeInText text="The 100% offline terminal cleaner & security auditor. Zero telemetry. Zero data leaks." delay={600} />
+      <p className="mb-12 max-w-3xl text-center text-lg text-muted-foreground md:text-xl leading-relaxed">
+        <FadeInText text="Clean systems, audit security risks (exposed .env files), and enforce corporate network blocklists offline. Engineered for IT Managers and Founders." delay={600} />
       </p>
 
       {/* Platform Selection */}
