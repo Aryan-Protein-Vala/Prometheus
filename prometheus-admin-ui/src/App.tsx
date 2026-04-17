@@ -45,10 +45,39 @@ export default function App() {
     }
   };
 
+  const sanitizeDomain = (input: string): string => {
+    let cleaned = input.trim().toLowerCase();
+    
+    // Remove protocol
+    cleaned = cleaned.replace(/^(https?:\/\/)/, '');
+    
+    // Split by / to remove path/query and take the first part (host)
+    cleaned = cleaned.split('/')[0];
+    
+    // Split by @ to remove credentials if any
+    cleaned = cleaned.split('@').pop() || '';
+    
+    // Remove port if any
+    cleaned = cleaned.split(':')[0];
+    
+    // Remove leading 'www.'
+    if (cleaned.startsWith('www.')) {
+      cleaned = cleaned.substring(4);
+    }
+    
+    return cleaned;
+  };
+
   const addDomain = (e: React.FormEvent) => {
     e.preventDefault();
-    const domain = newDomain.trim().toLowerCase();
-    if (!domain || blockedDomains.includes(domain)) return;
+    const domain = sanitizeDomain(newDomain);
+    
+    if (!domain) return;
+    if (blockedDomains.includes(domain)) {
+      setNewDomain('');
+      return;
+    }
+    
     const newList = [...blockedDomains, domain];
     updateConfig(newList);
     setNewDomain('');

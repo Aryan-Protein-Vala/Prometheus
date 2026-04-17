@@ -96,7 +96,12 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
     lines.push(String::new());
     lines.push(START_MARKER.to_string());
     for domain in blocked_domains {
-        let clean = domain.trim().to_lowercase();
+        let mut clean = domain.trim().to_lowercase();
+        // Strip www. prefix if it exists to normalize
+        if clean.starts_with("www.") {
+            clean = clean.strip_prefix("www.").unwrap_or(&clean).to_string();
+        }
+        
         if !clean.is_empty() {
             lines.push(format!("0.0.0.0 {}", clean));
             lines.push(format!("0.0.0.0 www.{}", clean));
