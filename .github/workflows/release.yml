@@ -17,15 +17,19 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             name: prometheus-macos-arm64
+            enforcer: prometheus-enforcer-macos-arm64
           - os: macos-15
             target: x86_64-apple-darwin
             name: prometheus-macos-x64
+            enforcer: prometheus-enforcer-macos-x64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             name: prometheus-linux-x64
+            enforcer: prometheus-enforcer-linux-x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: prometheus-windows-x64.exe
+            enforcer: prometheus-enforcer-windows-x64.exe
 
     steps:
       - uses: actions/checkout@v3
@@ -36,22 +40,27 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build
-        working-directory: prometheus-tui
         run: cargo build --release --target ${{ matrix.target }}
 
-      # Rename binary for upload
-      - name: Rename Binary (Unix)
+      # Rename binaries for upload
+      - name: Rename Binaries (Unix)
         if: runner.os != 'Windows'
-        run: mv prometheus-tui/target/${{ matrix.target }}/release/prometheus ${{ matrix.name }}
+        run: |
+          mv target/${{ matrix.target }}/release/prometheus ${{ matrix.name }}
+          mv target/${{ matrix.target }}/release/prometheus-enforcer ${{ matrix.enforcer }}
 
-      - name: Rename Binary (Windows)
+      - name: Rename Binaries (Windows)
         if: runner.os == 'Windows'
-        run: mv prometheus-tui/target/${{ matrix.target }}/release/prometheus.exe ${{ matrix.name }}
+        run: |
+          mv target/${{ matrix.target }}/release/prometheus.exe ${{ matrix.name }}
+          mv target/${{ matrix.target }}/release/prometheus-enforcer.exe ${{ matrix.enforcer }}
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.name }}
+          files: |
+            ${{ matrix.name }}
+            ${{ matrix.enforcer }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
