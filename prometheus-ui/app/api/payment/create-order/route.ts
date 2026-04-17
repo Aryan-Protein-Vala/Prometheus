@@ -24,10 +24,10 @@ const PRODUCT = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email } = body;
+    const { email, amount, planName } = body;
 
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    if (!email || !amount) {
+      return NextResponse.json({ error: 'Email and Amount are required' }, { status: 400 });
     }
 
     const keyId = process.env.RAZORPAY_KEY_ID;
@@ -51,12 +51,12 @@ export async function POST(request: NextRequest) {
         'Authorization': `Basic ${auth}`
       },
       body: JSON.stringify({
-        amount: PRODUCT.amount,
-        currency: PRODUCT.currency,
+        amount: Math.round(amount * 100), // Convert to paise
+        currency: 'INR',
         receipt: `prometheus_${Date.now()}`,
         notes: {
           email: email,
-          product: PRODUCT.name
+          product: planName || 'Prometheus Enterprise'
         }
       })
     });

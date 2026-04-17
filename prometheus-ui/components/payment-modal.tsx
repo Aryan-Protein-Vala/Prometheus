@@ -17,9 +17,11 @@ declare global {
 interface PaymentModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
+    amount: number
+    planName: string
 }
 
-export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
+export function PaymentModal({ open, onOpenChange, amount, planName }: PaymentModalProps) {
     const [step, setStep] = useState<'email' | 'payment' | 'processing' | 'success'>('email')
     const [email, setEmail] = useState('')
     const [isLoading, setIsLoading] = useState(false)
@@ -38,13 +40,8 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
     // Handle dialog close - prevent closing during processing/success
     const handleOpenChange = (newOpen: boolean) => {
-        // Don't allow closing during processing
-        if (step === 'processing') {
-            return
-        }
-        // If we have a license key, show it before closing
+        if (step === 'processing') return
         if (step === 'success' && licenseKey && !newOpen) {
-            // Allow close but reset
             resetModal()
             return
         }
@@ -77,16 +74,14 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
         setError('')
 
         try {
-            // Step 1: Create order
-            console.log('Creating order for:', email)
+            // Step 1: Create order with dynamic amount and planName
             const orderResponse = await fetch('/api/payment/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                body: JSON.stringify({ email, amount, planName })
             })
 
             const orderData = await orderResponse.json()
-            console.log('Order response:', orderData)
 
             if (!orderData.success) {
                 throw new Error(orderData.error || 'Failed to create order')
@@ -97,21 +92,13 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                 key: orderData.key,
                 amount: orderData.order.amount,
                 currency: orderData.order.currency,
-                name: 'Prometheus',
+                name: 'Prometheus Enterprise',
                 description: orderData.product,
                 order_id: orderData.order.id,
-                prefill: {
-                    email: email
-                },
-                theme: {
-                    color: '#000000'
-                },
+                prefill: { email: email },
+                theme: { color: '#000000' },
                 handler: async (response: any) => {
-                    // CRITICAL: Force our dialog to stay open/reopen
                     setInternalOpen(true)
-                    
-                    // Step 3: Verify payment - This is called ONLY on successful payment
-                    console.log('Payment successful, verifying:', response)
                     setStep('processing')
 
                     try {
@@ -127,53 +114,32 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                         })
 
                         const verifyData = await verifyResponse.json()
-                        console.log('Verify response:', verifyData)
-
                         if (verifyData.success && verifyData.licenseKey) {
-                            console.log('Setting license key and success step')
-                            // Set license key first
                             setLicenseKey(verifyData.licenseKey)
-                            // Force dialog open again
-                            setInternalOpen(true)
-                            // Set step to success
                             setStep('success')
-                            // Unlock body scroll
-                            document.body.style.overflow = ''
-                            document.body.style.pointerEvents = ''
+                            setInternalOpen(true)
                         } else {
                             throw new Error(verifyData.error || 'Payment verification failed')
                         }
                     } catch (verifyError: any) {
-                        console.error('Verify error:', verifyError)
                         setError(verifyError.message)
                         setStep('payment')
-                        setInternalOpen(true)
-                        document.body.style.overflow = ''
-                        document.body.style.pointerEvents = ''
                     }
                 },
                 modal: {
-                    ondismiss: () => {
-                        console.log('Razorpay modal dismissed')
-                        setIsLoading(false)
-                    }
+                    ondismiss: () => setIsLoading(false)
                 }
             }
 
             const razorpay = new window.Razorpay(options)
-
-            // Handle payment failures (like the 500 error you're seeing)
             razorpay.on('payment.failed', (response: any) => {
-                console.error('Payment failed:', response.error)
-                setError(`Payment failed: ${response.error.description || response.error.reason || 'Unknown error'}`)
+                setError(`Payment failed: ${response.error.description || 'Unknown error'}`)
                 setIsLoading(false)
             })
-
             razorpay.open()
             setIsLoading(false)
 
         } catch (err: any) {
-            console.error('Payment error:', err)
             setError(err.message || 'Payment failed. Please try again.')
             setIsLoading(false)
         }
@@ -200,29 +166,29 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                 {step === 'email' && (
                     <>
                         <DialogHeader>
-                            <DialogTitle className="text-xl font-medium">Get Prometheus</DialogTitle>
+                            <DialogTitle className="text-xl font-medium tracking-tight">Deploy {planName}</DialogTitle>
                             <DialogDescription className="text-muted-foreground">
-                                Enter your email to receive your license key.
+                                Enter your organizational email to receive your enterprise key.
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleEmailSubmit} className="space-y-4 mt-4">
                             <div className="space-y-2">
-                                <Label htmlFor="email" className="flex items-center gap-2">
-                                    <Mail className="h-4 w-4" />
-                                    Email Address
+                                <Label htmlFor="email" className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                                    <Mail className="h-3 w-3" />
+                                    Corporate Email
                                 </Label>
                                 <Input
                                     id="email"
                                     type="email"
-                                    placeholder="you@example.com"
+                                    placeholder="it-manager@company.com"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
                                     className="bg-background border-border"
                                 />
                             </div>
-                            <Button type="submit" className="w-full bg-foreground text-background hover:bg-foreground/90">
-                                Continue to Payment
+                            <Button type="submit" className="w-full bg-foreground text-background hover:bg-foreground/90 py-6 text-xs uppercase tracking-widest">
+                                Continue to Settlement
                             </Button>
                         </form>
                     </>
@@ -231,111 +197,100 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                 {step === 'payment' && (
                     <>
                         <DialogHeader>
-                            <DialogTitle className="text-xl font-medium">Complete Payment</DialogTitle>
+                            <DialogTitle className="text-xl font-medium">Order Settlement</DialogTitle>
                             <DialogDescription className="text-muted-foreground">
-                                Paying as {email}
+                                Billing as {email}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-6 mt-4">
-                            {/* Order Summary */}
-                            <div className="border border-border p-4 space-y-3">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Prometheus Founder Edition</span>
-                                    <span className="text-foreground">₹749</span>
+                            <div className="border border-border p-5 bg-black/40 space-y-4">
+                                <div className="flex justify-between text-xs tracking-widest uppercase">
+                                    <span className="text-muted-foreground">{planName}</span>
+                                    <span className="text-foreground">₹{amount.toLocaleString()}</span>
                                 </div>
-                                <div className="border-t border-border pt-3 flex justify-between font-medium">
-                                    <span>Total</span>
-                                    <span>₹749</span>
+                                <div className="border-t border-border pt-4 flex justify-between font-mono text-sm">
+                                    <span className="text-muted-foreground uppercase">Total Amount</span>
+                                    <span className="text-white">₹{amount.toLocaleString()}</span>
                                 </div>
                             </div>
 
                             {error && (
-                                <div className="text-sm text-red-500 p-3 border border-red-500/20 rounded bg-red-500/10">
+                                <div className="text-xs text-red-500 p-3 border border-red-500/20 rounded bg-red-500/10 font-mono">
                                     {error}
                                 </div>
                             )}
 
-                            {/* Payment Button */}
-                            <Button
-                                onClick={handlePayment}
-                                disabled={isLoading}
-                                className="w-full bg-foreground text-background hover:bg-foreground/90 py-6"
-                            >
+                            <Button onClick={handlePayment} disabled={isLoading} className="w-full bg-white text-black hover:bg-neutral-200 py-7 text-xs font-bold uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(255,255,255,0.05)]">
                                 {isLoading ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Opening payment...
+                                        Initing Gateway...
                                     </>
                                 ) : (
                                     <>
                                         <CreditCard className="mr-2 h-4 w-4" />
-                                        Pay ₹749
+                                        Settle ₹{amount.toLocaleString()}
                                     </>
                                 )}
                             </Button>
 
-                            <p className="text-xs text-center text-muted-foreground">
-                                Secure payment via Razorpay. Cards, UPI, Wallets accepted.
+                            <p className="text-[10px] text-center text-muted-foreground uppercase tracking-widest">
+                                Secure B2B Settlement via Razorpay Enterprise
                             </p>
                         </div>
                     </>
                 )}
 
                 {step === 'processing' && (
-                    <>
-                        <DialogHeader>
-                            <DialogTitle className="text-xl font-medium">Verifying Payment...</DialogTitle>
-                            <DialogDescription className="text-muted-foreground">
-                                Please wait while we confirm your payment.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                    <div className="py-12 flex flex-col items-center justify-center space-y-6">
+                        <Loader2 className="h-10 w-10 animate-spin text-white" />
+                        <div className="text-center">
+                            <p className="text-sm font-medium tracking-tight">Verifying Settlement...</p>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-2">Connecting to Secure Node</p>
                         </div>
-                    </>
+                    </div>
                 )}
 
                 {step === 'success' && (
                     <>
                         <DialogHeader>
                             <DialogTitle className="text-xl font-medium flex items-center gap-2">
-                                <CheckCircle2 className="h-5 w-5 text-green-500" />
-                                Payment Successful!
+                                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                                Protocol Authorized
                             </DialogTitle>
                             <DialogDescription className="text-muted-foreground">
-                                Your license key has been generated.
+                                Your enterprise license key has been generated.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-6 mt-4">
-                            {/* License Key Display */}
-                            <div className="border border-border bg-background p-4">
-                                <Label className="text-xs text-muted-foreground">Your License Key</Label>
-                                <div className="mt-2 flex items-center gap-2">
-                                    <code className="flex-1 text-lg font-mono text-foreground bg-muted px-3 py-2 rounded break-all">
+                            <div className="border border-border bg-black/60 p-5">
+                                <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Master Enterprise Key</Label>
+                                <div className="mt-3 flex items-center gap-2">
+                                    <code className="flex-1 text-base font-mono text-white bg-white/5 border border-white/5 px-4 py-3 rounded break-all tracking-tighter">
                                         {licenseKey}
                                     </code>
-                                    <Button variant="outline" size="sm" onClick={copyLicenseKey}>
+                                    <Button variant="outline" size="sm" onClick={copyLicenseKey} className="border-border hover:bg-white/5 h-12 w-12">
                                         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                                     </Button>
                                 </div>
                             </div>
 
-                            {/* Instructions */}
-                            <div className="space-y-2 text-sm text-muted-foreground">
-                                <p className="font-medium text-foreground">Next Steps:</p>
-                                <ol className="list-decimal list-inside space-y-1">
-                                    <li>Download Prometheus from the command above</li>
-                                    <li>Run <code className="bg-muted px-1 rounded">prometheus</code> in your terminal</li>
-                                    <li>Enter your license key when prompted</li>
+                            <div className="space-y-3 p-4 bg-muted/20 border border-border">
+                                <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-foreground">Next Steps:</p>
+                                <ol className="space-y-2">
+                                    <li className="flex gap-3 text-xs text-muted-foreground">
+                                        <span className="font-mono text-foreground/40">01.</span>
+                                        <span>Run <code className="text-foreground">prometheus</code> and authorize with this key.</span>
+                                    </li>
+                                    <li className="flex gap-3 text-xs text-muted-foreground">
+                                        <span className="font-mono text-foreground/40">02.</span>
+                                        <span>Login to <code className="text-foreground">localhost:4444</code> for fleet control.</span>
+                                    </li>
                                 </ol>
                             </div>
 
-                            <p className="text-xs text-center text-muted-foreground">
-                                A copy has also been sent to {email}
-                            </p>
-
-                            <Button onClick={resetModal} className="w-full" variant="outline">
-                                Done
+                            <Button onClick={resetModal} className="w-full text-xs uppercase tracking-widest" variant="outline">
+                                Complete Process
                             </Button>
                         </div>
                     </>
