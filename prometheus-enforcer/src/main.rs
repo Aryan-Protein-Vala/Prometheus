@@ -103,8 +103,9 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
         }
         
         if !clean.is_empty() {
-            lines.push(format!("0.0.0.0 {}", clean));
-            lines.push(format!("0.0.0.0 www.{}", clean));
+            // Using 127.0.0.1 for maximum cross-browser compatibility
+            lines.push(format!("127.0.0.1 {}", clean));
+            lines.push(format!("127.0.0.1 www.{}", clean));
         }
     }
     lines.push(END_MARKER.to_string());
@@ -122,7 +123,27 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
         }
     }
 
+    // Flush DNS Cache to ensure immediate effect
+    flush_dns_cache();
+
     Ok(())
+}
+
+fn flush_dns_cache() {
+    use std::process::Command;
+    
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("dscacheutil").arg("-flushcache").status();
+        let _ = Command::new("killall").args(["-HUP", "mDNSResponder"]).status();
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Try various common Linux DNS flush commands
+        let _ = Command::new("resolvectl").arg("flush-caches").status();
+        let _ = Command::new("systemd-resolve").arg("--flush-caches").status();
+    }
 }
 
 async fn get_config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> {

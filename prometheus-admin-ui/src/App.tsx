@@ -139,6 +139,12 @@ export default function App() {
               <header className="mb-12">
                 <h1 className="text-3xl font-light tracking-tight mb-2">Network Policy</h1>
                 <p className="text-neutral-500 text-sm">Synchronize domain blocklists across all enterprise endpoints via zero-route protocol.</p>
+                <div className="mt-4 p-3 border border-emerald-500/10 bg-emerald-500/5 flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <p className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest">
+                    Pro-Tip: Disable "DNS-over-HTTPS" in browser settings for 100% enforcement.
+                  </p>
+                </div>
               </header>
 
               {/* Add Input */}
