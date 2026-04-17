@@ -23,7 +23,7 @@ CONFIG_DIR="/etc/prometheus"
 
 GITHUB_REPO="Aryan-Protein-Vala/Prometheus"
 GITHUB_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
-DASHBOARD_URL="https://prometheus-cleaner.vercel.app"
+DASHBOARD_URL="http://localhost:4444"
 
 echo -e "${WHITE}  PROMETHEUS ENTERPRISE DEPLOYMENT${NC}"
 echo -e "${GRAY}  ─────────────────────────────────────${NC}"
@@ -53,19 +53,28 @@ case "$(uname -s)" in
         ;;
 esac
 
-echo -e "${GRAY}  ◦${NC} Downloading Prometheus System Cleaner..."
-# Create Temp directory for binaries
-mkdir -p /tmp/prometheus-setup
-curl -sL "${GITHUB_URL}/${BINARY_NAME}" -o "/tmp/prometheus-setup/prometheus"
-curl -sL "${GITHUB_URL}/${ENFORCER_NAME}" -o "/tmp/prometheus-setup/prometheus-enforcer"
+echo -e "${GRAY}  ◦${NC} Installing Enterprise Binaries..."
 
-# Move to bin and make executable
-mv /tmp/prometheus-setup/prometheus "$INSTALL_PATH"
-mv /tmp/prometheus-setup/prometheus-enforcer "$ENFORCER_PATH"
+# FIRST: Try to use local build assets for development/testing
+LOCAL_PROM="../target/release/prometheus"
+LOCAL_ENF="../target/release/prometheus-enforcer"
+
+if [ -f "$LOCAL_PROM" ] && [ -f "$LOCAL_ENF" ]; then
+    echo -e "${DIM}    (Using local build artifacts)${NC}"
+    cp "$LOCAL_PROM" "$INSTALL_PATH"
+    cp "$LOCAL_ENF" "$ENFORCER_PATH"
+else
+    echo -e "${DIM}    (Downloading from GitHub Release)${NC}"
+    mkdir -p /tmp/prometheus-setup
+    curl -sL "${GITHUB_URL}/${BINARY_NAME}" -o "/tmp/prometheus-setup/prometheus"
+    curl -sL "${GITHUB_URL}/${ENFORCER_NAME}" -o "/tmp/prometheus-setup/prometheus-enforcer"
+    mv /tmp/prometheus-setup/prometheus "$INSTALL_PATH"
+    mv /tmp/prometheus-setup/prometheus-enforcer "$ENFORCER_PATH"
+    rm -rf /tmp/prometheus-setup
+fi
 
 chmod +x "$INSTALL_PATH"
 chmod +x "$ENFORCER_PATH"
-rm -rf /tmp/prometheus-setup
 
 # Admin Config Setup
 mkdir -p "$CONFIG_DIR"

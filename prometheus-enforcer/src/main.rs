@@ -25,9 +25,16 @@ struct Config {
     blocked_domains: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct ConfigResponse {
+    blocked_domains: Vec<String>,
+    security_logs: serde_json::Value,
+}
+
 struct AppState {
     config: Mutex<Config>,
     config_path: PathBuf,
+    logs_path: PathBuf,
 }
 
 const START_MARKER: &str = "# --- PROMETHEUS START ---";
@@ -43,6 +50,17 @@ fn get_config_path() -> PathBuf {
         home.join(".config").join("prometheus").join("admin.json")
     } else {
         PathBuf::from("admin.json")
+    }
+}
+
+fn get_logs_path() -> PathBuf {
+    if let Some(home) = dirs::home_dir() {
+        home.join(".config").join("prometheus").join("security-logs.json")
+    } else {
+        #[cfg(target_os = "windows")]
+        { PathBuf::from(r"C:\ProgramData\Prometheus\security-logs.json") }
+        #[cfg(not(target_os = "windows"))]
+        { PathBuf::from("/etc/prometheus/security-logs.json") }
     }
 }
 
@@ -91,15 +109,31 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
         .map_err(|e| format!("Permission Denied: Run as Root/Admin (Error: {})", e))?;
 
     for line in lines {
-        writeln!(file, "{}", line).map_err(|e| format!("Write failed: {}", e))?;
+        if !line.is_empty() {
+            writeln!(file, "{}", line).map_err(|e| format!("Write failed: {}", e))?;
+        }
     }
 
     Ok(())
 }
 
-async fn get_config(State(state): State<Arc<AppState>>) -> Json<Config> {
+async fn get_config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> {
     let config = state.config.lock().await;
-    Json(config.clone())
+    
+    // Read dynamic security logs if they exist
+    let security_logs = if state.logs_path.exists() {
+        fs::read_to_string(&state.logs_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!([]))
+    } else {
+        serde_json::json!([])
+    };
+
+    Json(ConfigResponse {
+        blocked_domains: config.blocked_domains.clone(),
+        security_logs,
+    })
 }
 
 async fn update_config(
@@ -157,6 +191,7 @@ async fn index_html() -> Response {
 #[tokio::main]
 async fn main() {
     let config_path = get_config_path();
+    let logs_path = get_logs_path();
     
     let initial_config = if config_path.exists() {
         fs::read_to_string(&config_path)
@@ -170,6 +205,7 @@ async fn main() {
     let state = Arc::new(AppState {
         config: Mutex::new(initial_config),
         config_path,
+        logs_path,
     });
 
     let cors = CorsLayer::new()
