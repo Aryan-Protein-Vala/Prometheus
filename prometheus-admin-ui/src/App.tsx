@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Shield, Network, ListTree, X, Plus, Terminal, Monitor, LogOut } from 'lucide-react';
 
-const API_URL = 'http://localhost:4444/api/config';
+const API_URL = '/api/config';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'access' | 'logs'>('access');
@@ -131,6 +131,20 @@ export default function App() {
   const removeApp = (app: string) => {
     updateConfig(blockedDomains, blockedApps.filter(a => a !== app));
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-[#0a0a0a] text-white items-center justify-center font-mono">
+        <div className="flex flex-col items-center gap-6 animate-pulse">
+          <Shield className="w-16 h-16 text-neutral-800" />
+          <div className="space-y-2 text-center">
+            <h1 className="text-[10px] uppercase tracking-[0.6em] text-neutral-500">Initializing Safeguard</h1>
+            <p className="text-[8px] uppercase tracking-widest text-neutral-700">Connecting to Enterprise Node...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthorized) {
     return (
