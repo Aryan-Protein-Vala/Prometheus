@@ -230,8 +230,6 @@ async fn start_fleet_sync(state: Arc<AppState>) {
     }
 }
 
-    };
-
 async fn get_config(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>

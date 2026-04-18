@@ -58,6 +58,13 @@ echo -e "${GRAY}  ◦${NC} Installing Enterprise Binaries..."
 LOCAL_PROM="../target/release/prometheus"
 LOCAL_ENF="../target/release/prometheus-enforcer"
 
+# SAFETY: Stop running enforcer so we can overwrite the file
+if pgrep -f "prometheus-enforcer" > /dev/null; then
+    echo -e "${YELLOW}  ◦${NC} Stopping active enforcer for update..."
+    pkill -f "prometheus-enforcer"
+    sleep 2
+fi
+
 if [ -f "$LOCAL_PROM" ] && [ -f "$LOCAL_ENF" ]; then
     echo -e "${DIM}    (Using local build artifacts)${NC}"
     cp "$LOCAL_PROM" "$INSTALL_PATH"

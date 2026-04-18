@@ -93,9 +93,9 @@ export default function App() {
 
   const sanitizeDomain = (input: string): string => {
     try {
-      let cleaned = input.trim().toLowerCase();
-      if (!cleaned.includes('://')) cleaned = 'https://' + cleaned;
-      const url = new URL(cleaned);
+      let clean = input.trim().toLowerCase();
+      if (!clean.includes('://')) clean = 'https://' + clean;
+      const url = new URL(clean);
       let hostname = url.hostname;
       if (hostname.startsWith('www.')) hostname = hostname.substring(4);
       return hostname;
