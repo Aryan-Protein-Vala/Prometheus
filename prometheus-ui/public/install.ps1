@@ -77,9 +77,6 @@ Write-Host "🛠️  Creating administrative shims..." -ForegroundColor Cyan
 Remove-Item -Path "$BinDir\prometheus-admin.cmd" -ErrorAction SilentlyContinue
 Remove-Item -Path "$BinDir\prometheus-admin.bat" -ErrorAction SilentlyContinue
 
-"@echo off
-start "" "http://localhost:4444"" | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
-
 # 6. Global PATH Registration
 Write-Host "📍 Registering Global Commands..." -ForegroundColor Cyan
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
@@ -123,9 +120,10 @@ try {
     Write-Host "⚠️  Could not auto-start. Launching manual node..." -ForegroundColor Yellow
     Start-Process $Binary -WindowStyle Hidden
 }
-} catch {
-    Write-Host "⚠️  Could not start service automatically. Ensure you are running as Admin." -ForegroundColor Yellow
-}
+
+# Final shim creation with safe quoting
+$ShimContent = "@echo off`r`nstart `"`" `"http://localhost:4444`""
+$ShimContent | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 Write-Host ""
 Write-Host "✅ PROMETHEUS ENTERPRISE INSTALLED" -ForegroundColor Green
