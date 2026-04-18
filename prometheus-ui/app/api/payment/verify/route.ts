@@ -74,6 +74,36 @@ export async function POST(request: NextRequest) {
     const licenseKey = generateLicenseKey();
     console.log('Generated license key:', licenseKey);
 
+    // Fetch order details from Razorpay to determine tier/limit
+    let maxUses = 3; // Default for Basic
+    try {
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      
+      if (keyId && keySecret) {
+        const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+        const orderResponse = await fetch(`https://api.razorpay.com/v1/orders/${razorpay_order_id}`, {
+          headers: { 'Authorization': `Basic ${auth}` }
+        });
+        
+        if (orderResponse.ok) {
+          const orderData = await orderResponse.json();
+          const productPlan = orderData.notes?.product || '';
+          console.log('Verification: Detected product plan:', productPlan);
+          
+          if (productPlan.toLowerCase().includes('startup')) {
+            maxUses = 10;
+            console.log('Setting maxUses to 10 (Startup Protocol)');
+          } else if (productPlan.toLowerCase().includes('agency') || productPlan.toLowerCase().includes('enterprise')) {
+            maxUses = 100;
+            console.log('Setting maxUses to 100 (Enterprise/Agency)');
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch plan tier from Razorpay, falling back to 3:', e);
+    }
+
     // Store in PostgreSQL Database via Prisma
     try {
       await prisma.license.create({
@@ -81,11 +111,11 @@ export async function POST(request: NextRequest) {
           key: licenseKey,
           email: email,
           uses: 0,
-          maxUses: 3, // Allow up to 3 devices
+          maxUses: maxUses,
           source: 'razorpay'
         }
       });
-      console.log('License stored securely in PostgreSQL DB');
+      console.log(`License stored securely in PostgreSQL DB with limit: ${maxUses}`);
     } catch (dbError) {
       console.error('Database storage failed:', dbError);
       return NextResponse.json(

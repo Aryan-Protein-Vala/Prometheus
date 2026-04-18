@@ -2,64 +2,66 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../lib/prisma';
 
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const key = searchParams.get('key');
+  const hwid = searchParams.get('hwid');
+  return await processVerification(key, hwid);
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { key, hwid, email } = body;
+  // If email is provided (from admin login), we just verify the key exists
+  return await processVerification(key, hwid);
+}
+
+async function processVerification(key: string | null, hwid: string | null) {
   try {
-    const { searchParams } = new URL(request.url);
-    const key = searchParams.get('key');
-
     if (!key) {
-      return NextResponse.json(
-        { valid: false, message: 'Missing license key parameter' },
-        { status: 400 }
-      );
+      return NextResponse.json({ valid: false, message: 'Missing license key' }, { status: 400 });
     }
 
-    console.log('License verification request for:', key);
+    const normalizedKey = key.trim().toUpperCase();
 
-    // Demo keys always work
-    if (key === 'PROM-DEMO-2024' || key === 'PROMETHEUS-DEMO-KEY') {
-      return NextResponse.json({
-        valid: true,
-        uses: 1,
-        email: 'demo@prometheus.app',
-        message: 'Demo license activated.'
-      });
-    }
-
-    // Direct DB verification
+    // 1. Find License with Devices
     const license = await prisma.license.findUnique({
-      where: { key: key.trim() }
+      where: { key: normalizedKey },
+      include: { devices: true }
     });
 
     if (!license) {
-      return NextResponse.json({
-        valid: false,
-        uses: 0,
-        message: 'Invalid or unrecognized license key.'
-      });
+      return NextResponse.json({ valid: false, message: 'Invalid license key.' });
     }
 
-    if (license.uses >= license.maxUses) {
-      return NextResponse.json({
-        valid: false,
-        uses: license.uses,
-        message: 'Device limit reached for this license key.'
-      });
-    }
+    // 2. Hardware-Aware Usage Detection
+    const existingDevice = hwid ? license.devices.find(d => d.hwid === hwid) : null;
+    
+    if (!existingDevice && hwid && hwid !== "ADMIN_CONSOLE") {
+        if (license.uses >= license.maxUses) {
+            return NextResponse.json({
+                valid: false,
+                message: 'Device limit reached. Visit /admin to manage seats.'
+            });
+        }
 
-    const updatedLicense = await prisma.license.update({
-        where: { id: license.id },
-        data: { uses: { increment: 1 } }
-    });
+        await prisma.device.create({
+            data: { hwid, licenseId: license.id }
+        });
+
+        await prisma.license.update({
+            where: { id: license.id },
+            data: { uses: { increment: 1 } }
+        });
+    }
 
     return NextResponse.json({
         valid: true,
-        uses: updatedLicense.uses,
-        email: updatedLicense.email,
-        message: 'License activated successfully. Enjoy Prometheus PRO!'
+        email: license.email,
+        message: 'Identity Verified.'
     });
 
   } catch (error) {
-    console.error('License verification error:', error);
-    return NextResponse.json({ error: 'Server error during verification' }, { status: 500 });
+    console.error('License error:', error);
+    return NextResponse.json({ error: 'Server error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

@@ -78,18 +78,16 @@ const WEBSITE_KEY_PREFIX: &str = "PROM-";
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Get the license file path
+/// Get the universal license file path (Shared across all users/daemons)
 pub fn get_license_path() -> PathBuf {
-    if let Some(config_dir) = directories::ProjectDirs::from("dev", "prometheus", "prometheus") {
-        let config_path = config_dir.config_dir().to_path_buf();
-        config_path.join("license")
-    } else {
-        // Fallback to home directory
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("/"))
-            .join(".config")
-            .join("prometheus")
-            .join("license")
-    }
+    #[cfg(target_os = "windows")]
+    { PathBuf::from(r"C:\ProgramData\Prometheus\prometheus.license") }
+    #[cfg(target_os = "macos")]
+    { PathBuf::from("/Users/Shared/prometheus.license") }
+    #[cfg(target_os = "linux")]
+    { PathBuf::from("/etc/prometheus/prometheus.license") }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    { PathBuf::from(".prometheus.license") }
 }
 
 /// Check if a valid license exists locally
@@ -202,8 +200,9 @@ fn verify_website_key(license_key: &str) -> Result<(bool, Option<String>), Strin
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     
-    // Call website API
-    let url = format!("{}?key={}", WEBSITE_API_URL, license_key);
+    // Call website API with Hardware ID to prevent license cloning/burnout
+    let hwid = machine_uid::get().unwrap_or_else(|_| "UNKNOWN_HWID".to_string());
+    let url = format!("{}?key={}&hwid={}", WEBSITE_API_URL, license_key, hwid);
     
     let response = client
         .get(&url)

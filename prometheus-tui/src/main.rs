@@ -366,6 +366,7 @@ enum AppView {
     Scanning,
     Results,
     Deleting,
+    SecurityLock, // Fleet-wide master password lock
 }
 
 #[derive(PartialEq, Clone)]
@@ -406,6 +407,10 @@ struct AppState {
     update_available: Option<String>,
     // PRO Features
     pro_popup: bool,
+    // Fleet Features
+    fleet_password: Option<String>,
+    is_unlocked: bool,
+    password_input: String,
 }
 
 #[derive(Clone, Debug)]
@@ -447,6 +452,9 @@ impl AppState {
             deletion_report: None,
             update_available: None,
             pro_popup: false,
+            fleet_password: None,
+            is_unlocked: false,
+            password_input: String::new(),
         }
     }
 
@@ -1590,6 +1598,7 @@ fn render_ui(frame: &mut ratatui::Frame, state: &AppState, home: &PathBuf) {
         AppView::Scanning => render_scanning(frame, chunks[1], state),
         AppView::Results => render_tree(frame, chunks[1], state, home),
         AppView::Deleting => render_deleting(frame, chunks[1], state),
+        AppView::SecurityLock => render_security_lock(frame, chunks[1], state),
     }
     
     render_footer(frame, chunks[2], state);
@@ -1904,6 +1913,65 @@ fn render_license(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
             )));
         }
     }
+
+    let content = Paragraph::new(lines).alignment(Alignment::Center);
+    frame.render_widget(content, popup_inner);
+}
+
+fn render_security_lock(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(colors::ACCENT_RED))
+        .style(Style::default().bg(colors::BG_SURFACE));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Center the lock box
+    let popup_width = 60u16;
+    let popup_height = 14u16;
+    let popup_area = Rect {
+        x: inner.x + (inner.width.saturating_sub(popup_width)) / 2,
+        y: inner.y + (inner.height.saturating_sub(popup_height)) / 2,
+        width: popup_width.min(inner.width),
+        height: popup_height.min(inner.height),
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let popup_block = Block::default()
+        .title(Span::styled(" 🛡️ FLEET SECURITY LOCK ", Style::default().fg(colors::ACCENT_RED).bold()))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .border_style(Style::default().fg(colors::ACCENT_RED))
+        .style(Style::default().bg(colors::BG_DEEP));
+
+    let popup_inner = popup_block.inner(popup_area);
+    frame.render_widget(popup_block, popup_area);
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled("This terminal is under administrative control.", Style::default().fg(colors::TEXT_PRIMARY))),
+        Line::from(Span::styled("Master security password required to proceed.", Style::default().fg(colors::TEXT_MUTED))),
+        Line::from(""),
+    ];
+
+    // Input field with masked characters
+    let masked_input: String = state.password_input.chars().map(|_| '•').collect();
+    let cursor = if state.frame_count % 30 < 15 { "█" } else { " " };
+    let input_display = format!(" {}{} ", masked_input, cursor);
+    
+    lines.push(Line::from(vec![
+        Span::styled("SECRET ▶ ", Style::default().fg(colors::ACCENT_RED)),
+        Span::styled(input_display, Style::default().fg(colors::TEXT_PRIMARY).bold()),
+    ]));
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Unauthorized access is being monitored.",
+        Style::default().fg(colors::TEXT_MUTED).italic(),
+    )));
 
     let content = Paragraph::new(lines).alignment(Alignment::Center);
     frame.render_widget(content, popup_inner);
@@ -2267,6 +2335,7 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
         AppView::Scanning => "Scanning system... please wait",
         AppView::Results => "[↑↓/jk] Nav  [O] Expand  [Space] Select  [F] Finder  [D] Delete  [Q] Quit",
         AppView::Deleting => "Moving to Trash...",
+        AppView::SecurityLock => "[Enter] Unlock  [Esc] Back",
     };
 
     let footer = Paragraph::new(Line::from(vec![
@@ -2350,10 +2419,25 @@ fn main() -> io::Result<()> {
     // Check for updates in background (non-blocking)
     state.update_available = check_for_updates();
     
-    // macOS: Check for Full Disk Access if we're going to Home
-    #[cfg(target_os = "macos")]
-    if state.view == AppView::Home && !check_full_disk_access() {
-        state.view = AppView::FdaRequired;
+    // Check for Fleet Master Password lock
+    let config_dir = if cfg!(target_os = "windows") {
+        PathBuf::from(r"C:\ProgramData\Prometheus")
+    } else if cfg!(target_os = "macos") {
+        PathBuf::from("/Users/Shared")
+    } else {
+        PathBuf::from("/etc/prometheus")
+    };
+    let config_path = config_dir.join("admin-config.json");
+    if config_path.exists() {
+        if let Ok(content) = fs::read_to_string(&config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(pass) = json["master_password"].as_str() {
+                    state.fleet_password = Some(pass.to_string());
+                    state.view = AppView::SecurityLock;
+                    state.is_unlocked = false;
+                }
+            }
+        }
     }
 
     loop {
@@ -2386,11 +2470,13 @@ fn main() -> io::Result<()> {
                                 })
                             }).collect();
                             
-                            let logs_dir = if cfg!(target_os = "windows") {
-                                PathBuf::from(r"C:\ProgramData\Prometheus")
-                            } else {
-                                dirs::home_dir().unwrap_or_default().join(".config").join("prometheus")
-                            };
+                             let logs_dir = if cfg!(target_os = "windows") {
+                                 PathBuf::from(r"C:\ProgramData\Prometheus")
+                             } else if cfg!(target_os = "macos") {
+                                 PathBuf::from("/Users/Shared")
+                             } else {
+                                 PathBuf::from("/etc/prometheus")
+                             };
                             
                             let _ = std::fs::create_dir_all(&logs_dir);
                             let _ = std::fs::write(
@@ -2558,15 +2644,34 @@ fn main() -> io::Result<()> {
                                     }
                                 }
                             }
-                            KeyCode::Esc => {
-                                state.view = AppView::Home;
-                                state.categories.clear();
-                                state.selected_paths.clear();
-                                state.total_size_found = 0;
+                                _ => {}
+                            }
+                        }
+                        AppView::SecurityLock => match key.code {
+                            KeyCode::Esc => break,
+                            KeyCode::Backspace => { state.password_input.pop(); }
+                            KeyCode::Enter => {
+                                if let Some(ref target) = state.fleet_password {
+                                    if state.password_input == *target {
+                                        state.is_unlocked = true;
+                                        state.view = AppView::Home;
+                                        // Final check for macOS FDA
+                                        #[cfg(target_os = "macos")]
+                                        if !check_full_disk_access() {
+                                            state.view = AppView::FdaRequired;
+                                        }
+                                    } else {
+                                        state.password_input.clear();
+                                    }
+                                }
+                            }
+                            KeyCode::Char(c) => {
+                                if state.password_input.len() < 32 {
+                                    state.password_input.push(c);
+                                }
                             }
                             _ => {}
                         }
-                    }
                         AppView::Deleting => {}
                     }
                 }

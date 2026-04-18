@@ -8,12 +8,35 @@ datasource db {
 }
 
 model License {
+  id            String       @id @default(uuid())
+  key           String       @unique
+  email         String
+  uses          Int          @default(0)
+  maxUses       Int          @default(3)
+  source        String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  devices       Device[]
+  fleetPolicy   FleetPolicy?
+}
+
+model Device {
   id        String   @id @default(uuid())
-  key       String   @unique
-  email     String
-  uses      Int      @default(0)
-  maxUses   Int      @default(3)
-  source    String
+  hwid      String   // Unique Hardware ID
+  licenseId String
+  license   License  @relation(fields: [licenseId], references: [id])
+  lastSeen  DateTime @default(now())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  @@unique([licenseId, hwid])
+}
+
+model FleetPolicy {
+  id             String   @id @default(uuid())
+  licenseId      String   @unique
+  license        License  @relation(fields: [licenseId], references: [id])
+  blockedDomains String[] @default([])
+  blockedApps    String[] @default([])
+  masterPassword String?  // Optional global password for the fleet
+  updatedAt      DateTime @updatedAt
 }

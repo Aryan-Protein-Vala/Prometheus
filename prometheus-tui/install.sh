@@ -76,9 +76,9 @@ chmod +x "$INSTALL_PATH"
 chmod +x "$ENFORCER_PATH"
 
 # Admin Config Setup
-# Note: Newer version uses /Users/Shared/prometheus-admin.json or /tmp/
 mkdir -p "$CONFIG_DIR"
-chmod 755 "$CONFIG_DIR"
+# Grant permissions so the user-level TUI can write to the shared config/log
+chmod 777 "$CONFIG_DIR"
 
 # Create the prometheus-admin helper command
 echo -e "${GRAY}  ◦${NC} Creating 'prometheus-admin' shortcut..."

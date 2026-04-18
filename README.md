@@ -45,11 +45,12 @@ prometheus
 
 ## Features
 
-- **🔒 100% Offline** — Air-gapped. No telemetry. No cloud.
-- **🧹 Deep Flush** — Finds hidden cache, phantom duplicates, ad-trackers
-- **💻 Cross-Platform** — macOS, Windows, Linux binaries
-- **⚡ Fast** — Rust-powered TUI scans thousands of files in seconds
-- **🛡️ Safe** — Nothing deleted without confirmation
+- **🔒 100% Offline** — Air-gapped logic. Zero telemetry.
+- **📡 Enterprise Fleet** — Centralized Command Center for organizational management.
+- **🛡️ HWID Locking** — Persistent hardware identification to prevent license burnout.
+- **🧹 Deep Flush** — Finds hidden cache, phantom duplicates, and ad-trackers.
+- **💻 Cross-Platform** — Native binaries for macOS, Windows, and Linux.
+- **⚡ Fast** — Rust-powered TUI scans thousands of files in milliseconds.
 
 ---
 

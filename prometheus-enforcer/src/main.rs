@@ -1,11 +1,9 @@
 use axum::{
     extract::State,
-    http::{header, Method, StatusCode, Uri},
-    response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    http::StatusCode,
+    routing::get,
     Json, Router,
 };
-use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -14,18 +12,16 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::Mutex;
-use tower_http::cors::{Any, CorsLayer};
 use socket2::{Socket, Domain, Type, Protocol};
 use std::net::SocketAddr;
-
-#[derive(RustEmbed)]
-#[folder = "../prometheus-admin-ui/dist/"]
-struct Assets;
+// Assets are now managed via the Cloud Fleet Hub at prometheus-cleaner.vercel.app/admin
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Config {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
+    master_password: Option<String>,
+    license_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,6 +35,7 @@ struct AppState {
     config: Mutex<Config>,
     config_path: PathBuf,
     logs_path: PathBuf,
+    license_path: PathBuf,
 }
 
 const START_MARKER: &str = "# --- PROMETHEUS START ---";
@@ -53,7 +50,7 @@ fn get_config_path() -> PathBuf {
     #[cfg(target_os = "macos")]
     { PathBuf::from("/Users/Shared/prometheus-admin.json") }
     #[cfg(target_os = "linux")]
-    { PathBuf::from("/tmp/prometheus-admin.json") }
+    { PathBuf::from("/etc/prometheus/admin-config.json") }
     #[cfg(target_os = "windows")]
     { PathBuf::from(r"C:\ProgramData\Prometheus\admin.json") }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -64,11 +61,22 @@ fn get_logs_path() -> PathBuf {
     #[cfg(target_os = "macos")]
     { PathBuf::from("/Users/Shared/security-logs.json") }
     #[cfg(target_os = "linux")]
-    { PathBuf::from("/tmp/security-logs.json") }
+    { PathBuf::from("/etc/prometheus/security-logs.json") }
     #[cfg(target_os = "windows")]
     { PathBuf::from(r"C:\ProgramData\Prometheus\security-logs.json") }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     { PathBuf::from("security-logs.json") }
+}
+
+fn get_license_path() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    { PathBuf::from("/Users/Shared/prometheus.license") }
+    #[cfg(target_os = "linux")]
+    { PathBuf::from("/etc/prometheus/prometheus.license") }
+    #[cfg(target_os = "windows")]
+    { PathBuf::from(r"C:\ProgramData\Prometheus\prometheus.license") }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    { PathBuf::from("prometheus.license") }
 }
 
 async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
@@ -142,11 +150,78 @@ fn flush_dns_cache() {
         let _ = Command::new("killall").args(["-HUP", "mDNSResponder"]).status();
     }
     
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("ipconfig").arg("/flushdns").status();
+    }
+    
     #[cfg(target_os = "linux")]
     {
         // Try various common Linux DNS flush commands
         let _ = Command::new("resolvectl").arg("flush-caches").status();
         let _ = Command::new("systemd-resolve").arg("--flush-caches").status();
+        let _ = Command::new("nscd").args(["-i", "hosts"]).status();
+    }
+}
+
+async fn start_fleet_sync(state: Arc<AppState>) {
+    let client = reqwest::Client::new();
+    let hwid = machine_uid::get().unwrap_or_else(|_| "UNKNOWN_DEVICE".to_string());
+    
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        
+        let license_key = {
+            let config = state.config.lock().await;
+            config.license_key.clone()
+        };
+
+        if let Some(key) = license_key {
+            println!("[FLEET] Synchronizing with Command Center...");
+            
+            let res = client.post("https://prometheus-cleaner.vercel.app/api/fleet/sync")
+                .json(&serde_json::json!({
+                    "licenseKey": key,
+                    "hwid": hwid,
+                }))
+                .send()
+                .await;
+
+            if let Ok(response) = res {
+                if let Ok(data) = response.json::<serde_json::Value>().await {
+                    if data["success"].as_bool().unwrap_or(false) {
+                        let policy = &data["policy"];
+                        let mut config = state.config.lock().await;
+                        
+                        // Update lists if changed
+                        let remote_domains: Vec<String> = policy["blockedDomains"]
+                            .as_array().unwrap_or(&vec![]).iter()
+                            .map(|v| v.as_str().unwrap_or("").to_string()).collect();
+                        
+                        let remote_apps: Vec<String> = policy["blockedApps"]
+                            .as_array().unwrap_or(&vec![]).iter()
+                            .map(|v| v.as_str().unwrap_or("").to_string()).collect();
+
+                        let remote_pass = policy["masterPassword"].as_str().map(|s| s.to_string());
+
+                        if config.blocked_domains != remote_domains || config.blocked_apps != remote_apps || config.master_password != remote_pass {
+                            println!("[FLEET] NEW POLICY RECEIVED: Refreshing Defense Systems.");
+                            config.blocked_domains = remote_domains;
+                            config.blocked_apps = remote_apps;
+                            config.master_password = remote_pass;
+                            
+                            // Persist
+                            if let Ok(json) = serde_json::to_string_pretty(&*config) {
+                                let _ = fs::write(&state.config_path, json);
+                            }
+                            
+                            // Re-sync hosts
+                            let _ = sync_hosts_file(&config.blocked_domains).await;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -195,25 +270,7 @@ async fn update_config(
     (StatusCode::OK, "Config updated and synced".to_string())
 }
 
-async fn static_handler(uri: Uri) -> impl IntoResponse {
-    let path = uri.path().trim_start_matches('/');
-    let path = if path.is_empty() { "index.html" } else { path };
-
-    match Assets::get(path) {
-        Some(content) => {
-            let mime = mime_guess::from_path(path).first_or_octet_stream();
-            ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
-        }
-        None => {
-            // React SPA Fallback: If a file isn't found, serve index.html
-            if let Some(index) = Assets::get("index.html") {
-                Html(index.data).into_response()
-            } else {
-                (StatusCode::NOT_FOUND, "404 Not Found").into_response()
-            }
-        }
-    }
-}
+// Legacy static_handler removed. Using Cloud Hub Management.
 
 async fn start_app_killer(state: Arc<AppState>) {
     use sysinfo::{System, ProcessesToUpdate};
@@ -265,38 +322,51 @@ fn fix_file_permissions(path: &Path) {
 async fn main() {
     let config_path = get_config_path();
     let logs_path = get_logs_path();
+    let license_path = get_license_path();
     
-    let initial_config = if config_path.exists() {
+    let mut initial_config = if config_path.exists() {
         fs::read_to_string(&config_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(Config { blocked_domains: vec![], blocked_apps: vec![] })
+            .unwrap_or(Config { 
+                blocked_domains: vec![], 
+                blocked_apps: vec![],
+                master_password: None,
+                license_key: None,
+            })
     } else {
-        Config { blocked_domains: vec![], blocked_apps: vec![] }
+        Config { 
+            blocked_domains: vec![], 
+            blocked_apps: vec![],
+            master_password: None,
+            license_key: None,
+        }
     };
+
+    // If license key isn't in config but exists in license file, pull it in
+    if initial_config.license_key.is_none() && license_path.exists() {
+        if let Ok(key) = fs::read_to_string(&license_path) {
+            initial_config.license_key = Some(key.trim().to_string());
+        }
+    }
 
     let state = Arc::new(AppState {
         config: Mutex::new(initial_config),
         config_path: config_path.clone(),
         logs_path: logs_path.clone(),
+        license_path: license_path.clone(),
     });
 
     // SELF-HEALING: Fix permissions on start to prevent lockout
     fix_file_permissions(&config_path);
     fix_file_permissions(&logs_path);
 
-    // Spawn the Application Execution Blocker
+    // Spawn Fleet Sync and App Killer
+    tokio::spawn(start_fleet_sync(state.clone()));
     tokio::spawn(start_app_killer(state.clone()));
-
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(vec![Method::GET, Method::POST])
-        .allow_headers(vec![header::CONTENT_TYPE]);
 
     let app = Router::new()
         .route("/api/config", get(get_config).post(update_config))
-        .fallback(get(static_handler))
-        .layer(cors)
         .with_state(state);
 
     let addr: SocketAddr = "0.0.0.0:4444".parse().unwrap();

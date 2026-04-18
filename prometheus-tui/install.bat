@@ -17,6 +17,8 @@ set ENFORCER_PATH=%INSTALL_DIR%\prometheus-enforcer.exe
 set DASHBOARD_URL=https://prometheus-cleaner.vercel.app
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+if not exist "C:\ProgramData\Prometheus" mkdir "C:\ProgramData\Prometheus"
+icacls "C:\ProgramData\Prometheus" /grant Everyone:(OI)(CI)F /T >nul 2>&1
 
 echo  ◦ Downloading Enterprise Binaries...
 :: Mock: copy artifacts to install dir

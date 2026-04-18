@@ -25,4 +25,5 @@ blake3 = "1.5"
 self_update = { version = "0.41", features = ["archive-tar", "archive-zip", "compression-flate2", "compression-zip-deflate"] }
 rayon = "1.8"
 toml = "0.8"
+machine-uid = "0.2"
 
