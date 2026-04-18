@@ -230,15 +230,6 @@ async fn start_fleet_sync(state: Arc<AppState>) {
     }
 }
 
-async fn get_config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> {
-    let config = state.config.lock().await;
-    let security_logs = if state.logs_path.exists() {
-        fs::read_to_string(&state.logs_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(serde_json::json!([]))
-    } else {
-        serde_json::json!([])
     };
 
 async fn get_config(

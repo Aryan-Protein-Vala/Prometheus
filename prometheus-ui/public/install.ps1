@@ -37,6 +37,15 @@ Write-Host "⬇️  Downloading Cleaner agent..." -ForegroundColor Cyan
 Invoke-WebRequest -Uri $CleanerUrl -OutFile "$BinDir\prometheus.exe" -UseBasicParsing
 
 Write-Host "⬇️  Downloading Enforcer daemon..." -ForegroundColor Cyan
+
+# SAFETY: Stop running enforcer so we can overwrite the file
+$EnforcerProc = Get-Process "prometheus-enforcer" -ErrorAction SilentlyContinue
+if ($EnforcerProc) {
+    Write-Host "🛑 Stopping running enforcer for update..." -ForegroundColor Yellow
+    Stop-Process -Name "prometheus-enforcer" -Force
+    Start-Sleep -Seconds 2
+}
+
 Invoke-WebRequest -Uri $EnforcerUrl -OutFile "$BinDir\prometheus-enforcer.exe" -UseBasicParsing
 
 # 5. Create 'prometheus-admin' Shim
