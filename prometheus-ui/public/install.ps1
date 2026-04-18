@@ -42,7 +42,7 @@ Invoke-WebRequest -Uri $EnforcerUrl -OutFile "$BinDir\prometheus-enforcer.exe" -
 # 5. Create 'prometheus-admin' Shim
 Write-Host "🛠️  Creating administrative shims..." -ForegroundColor Cyan
 "@echo off
-`"$BinDir\prometheus.exe`" %*" | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
+start https://prometheus-cleaner.vercel.app/admin" | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 # 6. Global PATH Registration
 Write-Host "📍 Registering Global Commands..." -ForegroundColor Cyan

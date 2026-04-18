@@ -84,11 +84,11 @@ chmod 755 "$CONFIG_DIR"
 echo -e "${GRAY}  ◦${NC} Creating 'prometheus-admin' shortcut..."
 cat > "$ADMIN_CMD_PATH" <<EOF
 #!/bin/bash
-echo "Opening Prometheus Enterprise Dashboard..."
+echo "Opening Cloud Fleet Security Hub..."
 if command -v open &> /dev/null; then
-    open http://localhost:4444
+    open https://prometheus-cleaner.vercel.app/admin
 elif command -v xdg-open &> /dev/null; then
-    xdg-open http://localhost:4444
+    xdg-open https://prometheus-cleaner.vercel.app/admin
 fi
 EOF
 chmod +x "$ADMIN_CMD_PATH"

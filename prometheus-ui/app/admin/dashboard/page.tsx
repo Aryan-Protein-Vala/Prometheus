@@ -46,6 +46,24 @@ export default function AdminDashboard() {
     const [newApp, setNewApp] = useState("")
     const [masterPass, setMasterPass] = useState("")
     const router = useRouter()
+    
+    // Fine-Wine Normalization Logic 🍷
+    const normalizeDomain = (val: string) => {
+        try {
+            let clean = val.trim().toLowerCase();
+            if (!clean.includes('://')) clean = 'https://' + clean;
+            const url = new URL(clean);
+            let hostname = url.hostname;
+            if (hostname.startsWith('www.')) hostname = hostname.substring(4);
+            return hostname;
+        } catch {
+            return val.trim().toLowerCase();
+        }
+    }
+
+    const normalizeAppName = (val: string) => {
+        return val.trim().toLowerCase().replace(/\.exe$/, '').replace(/\.app$/, '');
+    }
 
     const fetchFleetData = useCallback(async (key: string) => {
         try {
@@ -236,14 +254,16 @@ export default function AdminDashboard() {
                                     onChange={(e) => setNewDomain(e.target.value)}
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter" && newDomain) {
-                                            setPolicy(prev => prev ? ({ ...prev, blockedDomains: [newDomain, ...prev.blockedDomains] }) : null)
+                                            const normalized = normalizeDomain(newDomain);
+                                            setPolicy(prev => prev ? ({ ...prev, blockedDomains: [normalized, ...prev.blockedDomains] }) : null)
                                             setNewDomain("")
                                         }
                                     }}
                                 />
                                 <Button size="icon" variant="outline" className="h-10 w-10 border-white/10 shrink-0" onClick={() => {
                                     if (!newDomain) return
-                                    setPolicy(prev => prev ? ({ ...prev, blockedDomains: [newDomain, ...prev.blockedDomains] }) : null)
+                                    const normalized = normalizeDomain(newDomain);
+                                    setPolicy(prev => prev ? ({ ...prev, blockedDomains: [normalized, ...prev.blockedDomains] }) : null)
                                     setNewDomain("")
                                 }}>
                                     <Plus className="h-4 w-4" />
@@ -283,14 +303,16 @@ export default function AdminDashboard() {
                                     onChange={(e) => setNewApp(e.target.value)}
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter" && newApp) {
-                                            setPolicy(prev => prev ? ({ ...prev, blockedApps: [newApp, ...prev.blockedApps] }) : null)
+                                            const normalized = normalizeAppName(newApp);
+                                            setPolicy(prev => prev ? ({ ...prev, blockedApps: [normalized, ...prev.blockedApps] }) : null)
                                             setNewApp("")
                                         }
                                     }}
                                 />
                                 <Button size="icon" variant="outline" className="h-10 w-10 border-white/10 shrink-0" onClick={() => {
                                     if (!newApp) return
-                                    setPolicy(prev => prev ? ({ ...prev, blockedApps: [newApp, ...prev.blockedApps] }) : null)
+                                    const normalized = normalizeAppName(newApp);
+                                    setPolicy(prev => prev ? ({ ...prev, blockedApps: [normalized, ...prev.blockedApps] }) : null)
                                     setNewApp("")
                                 }}>
                                     <Plus className="h-4 w-4" />
