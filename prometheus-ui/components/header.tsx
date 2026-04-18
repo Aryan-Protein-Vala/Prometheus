@@ -17,12 +17,12 @@ export function Header() {
 
                     {/* Right side buttons */}
                     <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => setLicenseModalOpen(true)}
-                            className="px-4 py-2 text-xs font-medium tracking-wide bg-foreground text-background hover:bg-foreground/90 transition-all duration-200"
+                        <a
+                            href="#pricing"
+                            className="px-4 py-2 text-xs font-medium tracking-wide bg-foreground text-background hover:bg-foreground/90 transition-all duration-200 uppercase"
                         >
                             Get Licence Key
-                        </button>
+                        </a>
                     </div>
                 </nav>
             </header>

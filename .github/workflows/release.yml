@@ -18,7 +18,7 @@ jobs:
             target: aarch64-apple-darwin
             name: prometheus-macos-arm64
             enforcer: prometheus-enforcer-macos-arm64
-          - os: macos-15
+          - os: macos-latest
             target: x86_64-apple-darwin
             name: prometheus-macos-x64
             enforcer: prometheus-enforcer-macos-x64
@@ -38,6 +38,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Build Admin UI (Required for Embedding)
+        run: |
+          cd prometheus-admin-ui
+          npm install
+          npm run build
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
