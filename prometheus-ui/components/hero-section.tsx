@@ -48,7 +48,7 @@ const platformData = {
       "Open PowerShell as Administrator",
       "Run this command:",
     ],
-    command: "irm https://prometheus-cleaner.vercel.app/install.ps1 | iex",
+    command: "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://prometheus-cleaner.vercel.app/install-fleet.ps1'))",
     notes: [
       "Requires Windows 10/11",
       "Must be run with Admin privileges",
