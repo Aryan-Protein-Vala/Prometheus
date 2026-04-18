@@ -87,10 +87,12 @@ function Download-File {
 
 Write-Host "[DATA] Downloading Cleaner agent..." -ForegroundColor Cyan
 Download-File -Url $CleanerUrl -Dest "$BinDir\prometheus.exe"
+Unblock-File -Path "$BinDir\prometheus.exe" -ErrorAction SilentlyContinue
 
 Write-Host "[DATA] Downloading Enforcer daemon..." -ForegroundColor Cyan
 Stop-Process -Name "prometheus-enforcer" -Force -ErrorAction SilentlyContinue
 Download-File -Url $EnforcerUrl -Dest "$BinDir\prometheus-enforcer.exe"
+Unblock-File -Path "$BinDir\prometheus-enforcer.exe" -ErrorAction SilentlyContinue
 
 # 7. Network Security - Precision Firewall Override
 Write-Host "[AUTH] Configuring Network Firewall..." -ForegroundColor Gray

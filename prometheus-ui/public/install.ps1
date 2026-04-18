@@ -95,6 +95,7 @@ function Download-File {
 }
 
 Download-File -Url $CleanerUrl -Dest "$BinDir\prometheus.exe"
+Unblock-File -Path "$BinDir\prometheus.exe" -ErrorAction SilentlyContinue
 
 Write-Host "⬇️  Downloading Enforcer daemon..." -ForegroundColor Cyan
 
@@ -107,6 +108,7 @@ if ($EnforcerProc) {
 }
 
 Download-File -Url $EnforcerUrl -Dest "$BinDir\prometheus-enforcer.exe"
+Unblock-File -Path "$BinDir\prometheus-enforcer.exe" -ErrorAction SilentlyContinue
 
 # 5. Create 'prometheus-admin' Shim
 Write-Host "🛠️  Creating administrative shims..." -ForegroundColor Cyan
