@@ -52,6 +52,14 @@ if (!$EnforcerUrl) { $EnforcerUrl = "https://github.com/$Repo/releases/latest/do
 
 # 4. Download Binaries
 Write-Host "⬇️  Downloading Cleaner agent..." -ForegroundColor Cyan
+
+# SAFETY: Stop running cleaner if it exists
+$CleanerProc = Get-Process "prometheus" -ErrorAction SilentlyContinue
+if ($CleanerProc) {
+    Write-Host "🛑 Stopping running cleaner for update..." -ForegroundColor Yellow
+    Stop-Process -Name "prometheus" -Force
+}
+
 Invoke-WebRequest -Uri $CleanerUrl -OutFile "$BinDir\prometheus.exe" -UseBasicParsing
 
 Write-Host "⬇️  Downloading Enforcer daemon..." -ForegroundColor Cyan
@@ -68,8 +76,12 @@ Invoke-WebRequest -Uri $EnforcerUrl -OutFile "$BinDir\prometheus-enforcer.exe" -
 
 # 5. Create 'prometheus-admin' Shim
 Write-Host "🛠️  Creating administrative shims..." -ForegroundColor Cyan
+# FORCE: Delete old shims to prevent Windows "Fuzzy Matching" conflicts
+Remove-Item -Path "$BinDir\prometheus-admin.cmd" -ErrorAction SilentlyContinue
+Remove-Item -Path "$BinDir\prometheus-admin.bat" -ErrorAction SilentlyContinue
+
 "@echo off
-start http://localhost:4444" | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
+start "" "http://localhost:4444"" | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 # 6. Global PATH Registration
 Write-Host "📍 Registering Global Commands..." -ForegroundColor Cyan
