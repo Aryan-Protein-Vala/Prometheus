@@ -436,20 +436,11 @@ async fn main() {
         .fallback(get(static_handler))
         .with_state(state);
 
-    let addr: SocketAddr = "127.0.0.1:4444".parse().unwrap();
+    let addr = "127.0.0.1:4444";
+    let listener = tokio::net::TcpListener::bind(addr).await.expect("Failed to bind to 127.0.0.1:4444");
     
-    // SELF-HEALING: Configure socket with REUSEADDR
-    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).unwrap();
-    let _ = socket.set_reuse_address(true);
-
-    socket.bind(&addr.into()).expect("Failed to bind to port 4444");
-    socket.listen(128).expect("Failed to listen on port 4444");
-    
-    let listener: std::net::TcpListener = socket.into();
-    let tokio_listener = tokio::net::TcpListener::from_std(listener).unwrap();
-
     println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
-    if let Err(e) = axum::serve(tokio_listener, app).await {
+    if let Err(e) = axum::serve(listener, app).await {
         eprintln!("SERVER ERROR: {}", e);
     }
 }

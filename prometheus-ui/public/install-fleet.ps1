@@ -1,5 +1,5 @@
 # ===========================================================================
-#  PROMETHEUS ENTERPRISE FLEET INSTALLER - Windows (v1.3.23)
+#  PROMETHEUS ENTERPRISE FLEET INSTALLER - Windows (v1.3.25)
 # ===========================================================================
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +11,7 @@ if (-not $isAdmin) {
     return
 }
 
-Write-Host "[INIT] Booting Prometheus Enterprise Fleet Deployment..." -ForegroundColor Cyan
+Write-Host "[INIT] Booting Prometheus Enterprise IPv4 Lockdown Deployment..." -ForegroundColor Cyan
 
 # 2. Global TLS & System Cleanup
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -92,7 +92,15 @@ Write-Host "[DATA] Downloading Enforcer daemon..." -ForegroundColor Cyan
 Stop-Process -Name "prometheus-enforcer" -Force -ErrorAction SilentlyContinue
 Download-File -Url $EnforcerUrl -Dest "$BinDir\prometheus-enforcer.exe"
 
-# 7. Global PATH Registration
+# 7. Network Security - Precision Firewall Override
+Write-Host "[AUTH] Configuring Network Firewall..." -ForegroundColor Gray
+$EnforcerPath = "$BinDir\prometheus-enforcer.exe"
+try {
+    # Precision Rule: Allow the specific binary to bind to its port
+    New-NetFirewallRule -DisplayName "Prometheus Enterprise" -Direction Inbound -Program $EnforcerPath -Action Allow -ErrorAction SilentlyContinue | Out-Null
+} catch {}
+
+# 8. Global PATH Registration
 Write-Host "[SYS] Registering Global Commands..." -ForegroundColor Cyan
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
 if ($CurrentPath -notlike "*$BinDir*") {
@@ -100,14 +108,10 @@ if ($CurrentPath -notlike "*$BinDir*") {
     $env:Path += ";$BinDir"
 }
 
-# 8. Setup Background Enforcer (Scheduled Task)
+# 9. Setup Background Enforcer (Scheduled Task)
 Write-Host "[SYS] Configuring Stealth Daemon..." -ForegroundColor Cyan
 $TaskName = "PrometheusEnforcer"
 $Binary = "$BinDir\prometheus-enforcer.exe"
-
-try {
-    New-NetFirewallRule -DisplayName "Prometheus Admin Dashboard" -Direction Inbound -LocalPort 4444 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue
-} catch {}
 
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 $Action = New-ScheduledTaskAction -Execute $Binary
@@ -117,14 +121,15 @@ Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Se
 
 Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
-# 9. Create Administrative Shim
-$ShimContent = "@echo off`r`nstart `"`" `"http://localhost:4444`""
+# 10. Create Administrative Shim (Locked to 127.0.0.1)
+$ShimContent = "@echo off`r`nstart `"`" `"http://127.0.0.1:4444`""
 $ShimContent | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 Write-Host ""
 Write-Host "[OK] PROMETHEUS ENTERPRISE INSTALLED" -ForegroundColor Green
 Write-Host "===================================="
 Write-Host "Location: $InstallDir"
+Write-Host "Network:  Bound to 127.0.0.1:4444 (IPv4 Locked)"
 Write-Host "Commands:"
 Write-Host "  prometheus        - Start cleaner"
 Write-Host "  prometheus-admin  - Start admin"
