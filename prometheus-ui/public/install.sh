@@ -1,18 +1,13 @@
 #!/bin/bash
-# ═══════════════════════════════════════════════════════════════════════════
-#  PROMETHEUS ENTERPRISE INSTALLER
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+#  PROMETHEUS ENTERPRISE FLEET INSTALLER - Unix (v1.3.24)
+# ===========================================================================
 
 set -e
 
-WHITE='\033[1;37m'
-GRAY='\033[0;90m'
-DIM='\033[2m'
-RED='\033[0;31m'
-NC='\033[0m'
-
+# 1. Require Root
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${RED}Please run this installer as root or with sudo.${NC}"
+  echo "Please run this installer with sudo."
   exit
 fi
 
@@ -21,8 +16,8 @@ ENFORCER_PATH="/usr/local/bin/prometheus-enforcer"
 ADMIN_CMD_PATH="/usr/local/bin/prometheus-admin"
 CONFIG_DIR="/etc/prometheus"
 
-# 3. Discover Latest Release Assets via GitHub API
-echo -e "${CYAN}📡 Discovering latest binaries...${NC}"
+# 2. Discover Latest Release Assets via GitHub API
+echo "[NET] Discovering latest binaries..."
 REPO="Aryan-Protein-Vala/Prometheus"
 MAX_RETRIES=3
 RETRY_COUNT=0
@@ -30,97 +25,74 @@ SUCCESS=false
 
 while [ "$SUCCESS" = false ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     RELEASE_DATA=$(curl -s --connect-timeout 10 "https://api.github.com/repos/$REPO/releases/latest")
-    CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep -v 'enforcer' | head -1)
-    ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep 'enforcer' | head -1)
     
-    # Overwrite for Mac
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep -v 'enforcer' | head -1)
-        ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep 'enforcer' | head -1)
-    fi
+    # OS Detection for naming
+    case "$(uname -s)" in
+        Darwin*)
+            CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep -v 'enforcer' | head -1)
+            ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep 'enforcer' | head -1)
+            ;;
+        Linux*)
+            CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep -v 'enforcer' | head -1)
+            ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep 'enforcer' | head -1)
+            ;;
+    esac
 
     if [ -n "$CLEANER_URL" ] && [ -n "$ENFORCER_URL" ]; then
         SUCCESS=true
     else
         RETRY_COUNT=$((RETRY_COUNT+1))
-        echo -e "${YELLOW}  ◦${NC} Connection slow, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+        echo "[WARN] Connection slow, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
         sleep 2
     fi
 done
 
 if [ "$SUCCESS" = false ]; then
-    echo -e "${RED}❌ FATAL: Could not connect to update servers.${NC}"
-    exit 1
+    # Fallback to direct download logic if API discovery failed
+    echo "[WARN] API Discovery failed, using fallback URLs..."
+    BASE_URL="https://github.com/$REPO/releases/latest/download"
+    case "$(uname -s)" in
+        Darwin*)
+            ARCH=$(uname -m)
+            if [ "$ARCH" = "arm64" ]; then
+                CLEANER_URL="$BASE_URL/prometheus-macos-arm64"
+                ENFORCER_URL="$BASE_URL/prometheus-enforcer-macos-arm64"
+            else
+                CLEANER_URL="$BASE_URL/prometheus-macos-x64"
+                ENFORCER_URL="$BASE_URL/prometheus-enforcer-macos-x64"
+            fi
+            ;;
+        Linux*)
+            CLEANER_URL="$BASE_URL/prometheus-linux-x64"
+            ENFORCER_URL="$BASE_URL/prometheus-enforcer-linux-x64"
+            ;;
+    esac
 fi
 
-echo -e "${WHITE}  PROMETHEUS ENTERPRISE DEPLOYMENT${NC}"
-echo -e "${GRAY}  ─────────────────────────────────────${NC}"
+echo "[DATA] Downloading Prometheus Enterprise suite..."
 
-# Detect OS
-OS="unknown"
-case "$(uname -s)" in
-    Darwin*)
-        OS="macos"
-        ARCH=$(uname -m)
-        if [ "$ARCH" = "arm64" ]; then
-            BINARY_NAME="prometheus-macos-arm64"
-            ENFORCER_NAME="prometheus-enforcer-macos-arm64"
-        else
-            BINARY_NAME="prometheus-macos-x64"
-            ENFORCER_NAME="prometheus-enforcer-macos-x64"
-        fi
-        ;;
-    Linux*)
-        OS="linux"
-        BINARY_NAME="prometheus-linux-x64"
-        ENFORCER_NAME="prometheus-enforcer-linux-x64"
-        ;;
-    *)
-        echo -e "${RED}Unsupported OS${NC}"
-        exit 1
-        ;;
-esac
-
-echo -e "${GRAY}  ◦${NC} Installing Enterprise Binaries..."
-
-# FIRST: Try to use local build assets for development/testing
-LOCAL_PROM="../target/release/prometheus"
-LOCAL_ENF="../target/release/prometheus-enforcer"
-
-# SAFETY: Stop running enforcer so we can overwrite the file
+# SAFETY: Stop running enforcer
 if pgrep -f "prometheus-enforcer" > /dev/null; then
-    echo -e "${YELLOW}  ◦${NC} Stopping active enforcer for update..."
     pkill -f "prometheus-enforcer"
     sleep 2
 fi
 
-if [ -f "$LOCAL_PROM" ] && [ -f "$LOCAL_ENF" ]; then
-    echo -e "${DIM}    (Using local build artifacts)${NC}"
-    cp "$LOCAL_PROM" "$INSTALL_PATH"
-    cp "$LOCAL_ENF" "$ENFORCER_PATH"
-else
-    echo -e "${DIM}    (Downloading from GitHub Release)${NC}"
-    mkdir -p /tmp/prometheus-setup
-    curl -sL "${GITHUB_URL}/${BINARY_NAME}" -o "/tmp/prometheus-setup/prometheus"
-    curl -sL "${GITHUB_URL}/${ENFORCER_NAME}" -o "/tmp/prometheus-setup/prometheus-enforcer"
-    mv /tmp/prometheus-setup/prometheus "$INSTALL_PATH"
-    mv /tmp/prometheus-setup/prometheus-enforcer "$ENFORCER_PATH"
-    rm -rf /tmp/prometheus-setup
-fi
+# Download binaries
+mkdir -p /tmp/prometheus-setup
+curl -sL "$CLEANER_URL" -o /tmp/prometheus-setup/prometheus
+curl -sL "$ENFORCER_URL" -o /tmp/prometheus-setup/prometheus-enforcer
+
+mv /tmp/prometheus-setup/prometheus "$INSTALL_PATH"
+mv /tmp/prometheus-setup/prometheus-enforcer "$ENFORCER_PATH"
+rm -rf /tmp/prometheus-setup
 
 chmod +x "$INSTALL_PATH"
 chmod +x "$ENFORCER_PATH"
 
-# Admin Config Setup
-# Note: Newer version uses /Users/Shared/prometheus-admin.json or /tmp/
-mkdir -p "$CONFIG_DIR"
-chmod 755 "$CONFIG_DIR"
-
-# Create the prometheus-admin helper command
-echo -e "${GRAY}  ◦${NC} Creating 'prometheus-admin' shortcut..."
+# 3. Create 'prometheus-admin' Shortcut
+echo "[SYS] Creating shims..."
 cat > "$ADMIN_CMD_PATH" <<EOF
 #!/bin/bash
-echo "Opening Safeguarded Admin Node..."
 if command -v open &> /dev/null; then
     open http://localhost:4444
 elif command -v xdg-open &> /dev/null; then
@@ -129,9 +101,9 @@ fi
 EOF
 chmod +x "$ADMIN_CMD_PATH"
 
-# Background Service Registration
-if [ "$OS" = "macos" ]; then
-    echo -e "${GRAY}  ◦${NC} Registering LaunchDaemon..."
+# 4. Background Service Registration
+if [[ "$(uname -s)" == "Darwin"* ]]; then
+    echo "[SYS] Registering LaunchDaemon..."
     PLIST="/Library/LaunchDaemons/com.prometheus.enforcer.plist"
     cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -148,18 +120,13 @@ if [ "$OS" = "macos" ]; then
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardOutPath</key>
-    <string>/Users/Shared/prometheus-enforcer.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/Shared/prometheus-enforcer.log</string>
 </dict>
 </plist>
 EOF
-    # Force unload and reload to ensure new config takes effect
-    launchctl bootout system "$PLIST" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
-    launchctl bootstrap system "$PLIST" 2>/dev/null || launchctl load -w "$PLIST" 2>/dev/null || true
-elif [ "$OS" = "linux" ]; then
-    echo -e "${GRAY}  ◦${NC} Registering Systemd Service..."
+    launchctl bootout system "$PLIST" 2>/dev/null || true
+    launchctl bootstrap system "$PLIST" 2>/dev/null || true
+else
+    echo "[SYS] Registering Systemd Service..."
     SERVICE="/etc/systemd/system/prometheus-enforcer.service"
     cat > "$SERVICE" <<EOF
 [Unit]
@@ -179,9 +146,10 @@ EOF
     systemctl start prometheus-enforcer 2>/dev/null || true
 fi
 
-echo -e ""
-echo -e "${WHITE}  ✓ Installation Complete${NC}"
-echo -e "${GRAY}  ─────────────────────────────────────${NC}"
-echo -e "${DIM}  Run cleaner:${NC}  ${WHITE}prometheus${NC}"
-echo -e "${DIM}  Run admin:${NC}    ${WHITE}prometheus-admin${NC}"
+echo ""
+echo "[OK] INSTALLATION COMPLETE"
+echo "=========================="
+echo "Commands:"
+echo "  prometheus        - Start cleaner"
+echo "  prometheus-admin  - Start admin UI"
 echo ""
