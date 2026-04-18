@@ -57,7 +57,31 @@ if ($CleanerProc) {
     Stop-Process -Name "prometheus" -Force
 }
 
-Invoke-WebRequest -Uri $CleanerUrl -OutFile "$BinDir\prometheus.exe" -UseBasicParsing
+# Robust Download via BITS or WebClient
+function Download-File {
+    param([string]$Url, [string]$Dest)
+    $MaxRetries = 3
+    $StepCount = 0
+    $Done = $false
+
+    while (!$Done -and $StepCount -lt $MaxRetries) {
+        try {
+            if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
+                Start-BitsTransfer -Source $Url -Destination $Dest -ErrorAction Stop
+            } else {
+                (New-Object System.Net.WebClient).DownloadFile($Url, $Dest)
+            }
+            $Done = $true
+        } catch {
+            $StepCount++
+            Write-Host "⚠️  Download interrupted, retrying ($StepCount/$MaxRetries)..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 3
+        }
+    }
+    if (!$Done) { throw "Could not download $Url after multiple attempts." }
+}
+
+Download-File -Url $CleanerUrl -Dest "$BinDir\prometheus.exe"
 
 Write-Host "⬇️  Downloading Enforcer daemon..." -ForegroundColor Cyan
 
@@ -69,7 +93,7 @@ if ($EnforcerProc) {
     Start-Sleep -Seconds 2
 }
 
-Invoke-WebRequest -Uri $EnforcerUrl -OutFile "$BinDir\prometheus-enforcer.exe" -UseBasicParsing
+Download-File -Url $EnforcerUrl -Dest "$BinDir\prometheus-enforcer.exe"
 
 # 5. Create 'prometheus-admin' Shim
 Write-Host "🛠️  Creating administrative shims..." -ForegroundColor Cyan
