@@ -6,8 +6,12 @@ $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Write-Host "🔥 Initializing Prometheus Enterprise Fleet Deployment..." -ForegroundColor Cyan
 
+# 0. Auto-Cleanup Stuck Jobs
+Get-BitsTransfer | Remove-BitsTransfer -ErrorAction SilentlyContinue
+
 # 1. Force TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Start-Sleep -Seconds 1
 
 # 2. Define Directories
 $InstallBase = "$env:ProgramData\Prometheus"
