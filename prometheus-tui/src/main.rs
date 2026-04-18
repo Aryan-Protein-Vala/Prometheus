@@ -6,7 +6,7 @@
 mod license;
 
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -20,12 +20,10 @@ use ratatui::{
 };
 use std::{
     collections::HashMap,
-    fs::File,
-    io::{self, Read},
+    fs,
+    io,
     path::{Path, PathBuf},
-    sync::{mpsc, OnceLock},
-    thread,
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant},
 };
 use walkdir::WalkDir;
 use serde::{Deserialize, Serialize};
@@ -1342,7 +1340,6 @@ fn scan_developer_junk(home: &Path, tx: &mpsc::Sender<ScanMessage>) -> CategoryN
     let _ = tx.send(ScanMessage::Progress("Scanning developer caches & projects...".to_string()));
 
     // PART 1: STATIC PATHS (IDE Caches, etc)
-    let sep = std::path::MAIN_SEPARATOR;
     let mut static_paths = Vec::new();
 
     #[cfg(target_os = "macos")]
