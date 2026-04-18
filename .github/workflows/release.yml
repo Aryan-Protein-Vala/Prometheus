@@ -35,12 +35,18 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Install dependencies (Admin UI)
+        run: cd prometheus-admin-ui && npm install
+
+      - name: Build Admin UI
+        run: cd prometheus-admin-ui && npm run build
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build
+      - name: Build binary
         run: cargo build --release --target ${{ matrix.target }}
 
       # Rename binaries for upload

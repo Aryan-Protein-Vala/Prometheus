@@ -1,9 +1,11 @@
 use axum::{
-    extract::State,
-    http::StatusCode,
+    extract::{State},
+    http::{StatusCode, Uri, header, HeaderMap},
+    response::{Html, IntoResponse, Response},
     routing::get,
     Json, Router,
 };
+use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -14,7 +16,10 @@ use std::{
 use tokio::sync::Mutex;
 use socket2::{Socket, Domain, Type, Protocol};
 use std::net::SocketAddr;
-// Assets are now managed via the Cloud Fleet Hub at prometheus-cleaner.vercel.app/admin
+
+#[derive(RustEmbed)]
+#[folder = "../prometheus-admin-ui/dist/"]
+struct Assets;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Config {
@@ -236,18 +241,59 @@ async fn get_config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> 
         serde_json::json!([])
     };
 
-    Json(ConfigResponse {
+async fn get_config(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>
+) -> Result<Json<ConfigResponse>, StatusCode> {
+    let config = state.config.lock().await;
+    
+    // SAFEGUARD AUTH
+    let auth = headers.get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    
+    let master_pass = config.master_password.clone().unwrap_or_default();
+    let license_key = config.license_key.clone().unwrap_or_default();
+
+    if auth != master_pass && auth != license_key && !master_pass.is_empty() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let security_logs = if state.logs_path.exists() {
+        fs::read_to_string(&state.logs_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!([]))
+    } else {
+        serde_json::json!([])
+    };
+
+    Ok(Json(ConfigResponse {
         blocked_domains: config.blocked_domains.clone(),
         blocked_apps: config.blocked_apps.clone(),
         security_logs,
-    })
+    }))
 }
 
 async fn update_config(
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<Config>,
-) -> (StatusCode, String) {
+) -> Result<(StatusCode, String), StatusCode> {
     let mut config = state.config.lock().await;
+
+    // SAFEGUARD AUTH
+    let auth = headers.get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    
+    let master_pass = config.master_password.clone().unwrap_or_default();
+    let license_key = config.license_key.clone().unwrap_or_default();
+
+    if auth != master_pass && auth != license_key && !master_pass.is_empty() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
     config.blocked_domains = payload.blocked_domains;
     config.blocked_apps = payload.blocked_apps;
 
@@ -257,20 +303,37 @@ async fn update_config(
     match serde_json::to_string_pretty(&*config) {
         Ok(json) => {
             if let Err(e) = fs::write(&state.config_path, json) {
-                return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save config: {}", e));
+                return Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save config: {}", e)));
             }
         }
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Serialization error: {}", e)),
+        Err(e) => return Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Serialization error: {}", e))),
     }
 
     if let Err(e) = sync_hosts_file(&config.blocked_domains).await {
-        return (StatusCode::FORBIDDEN, e);
+        return Ok((StatusCode::FORBIDDEN, e));
     }
 
-    (StatusCode::OK, "Config updated and synced".to_string())
+    Ok((StatusCode::OK, "Config updated and synced".to_string()))
 }
 
-// Legacy static_handler removed. Using Cloud Hub Management.
+async fn static_handler(uri: Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+
+    match Assets::get(path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
+        }
+        None => {
+            if let Some(index) = Assets::get("index.html") {
+                Html(index.data).into_response()
+            } else {
+                (StatusCode::NOT_FOUND, "404 Not Found").into_response()
+            }
+        }
+    }
+}
 
 async fn start_app_killer(state: Arc<AppState>) {
     use sysinfo::{System, ProcessesToUpdate};
@@ -367,6 +430,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/config", get(get_config).post(update_config))
+        .fallback(get(static_handler))
         .with_state(state);
 
     let addr: SocketAddr = "0.0.0.0:4444".parse().unwrap();
