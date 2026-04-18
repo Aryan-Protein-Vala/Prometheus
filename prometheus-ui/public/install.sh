@@ -21,8 +21,37 @@ ENFORCER_PATH="/usr/local/bin/prometheus-enforcer"
 ADMIN_CMD_PATH="/usr/local/bin/prometheus-admin"
 CONFIG_DIR="/etc/prometheus"
 
-GITHUB_REPO="Aryan-Protein-Vala/Prometheus"
-GITHUB_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
+# 3. Discover Latest Release Assets via GitHub API
+echo -e "${CYAN}📡 Discovering latest binaries...${NC}"
+REPO="Aryan-Protein-Vala/Prometheus"
+MAX_RETRIES=3
+RETRY_COUNT=0
+SUCCESS=false
+
+while [ "$SUCCESS" = false ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    RELEASE_DATA=$(curl -s --connect-timeout 10 "https://api.github.com/repos/$REPO/releases/latest")
+    CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep -v 'enforcer' | head -1)
+    ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep 'enforcer' | head -1)
+    
+    # Overwrite for Mac
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep -v 'enforcer' | head -1)
+        ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep 'enforcer' | head -1)
+    fi
+
+    if [ -n "$CLEANER_URL" ] && [ -n "$ENFORCER_URL" ]; then
+        SUCCESS=true
+    else
+        RETRY_COUNT=$((RETRY_COUNT+1))
+        echo -e "${YELLOW}  ◦${NC} Connection slow, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+        sleep 2
+    fi
+done
+
+if [ "$SUCCESS" = false ]; then
+    echo -e "${RED}❌ FATAL: Could not connect to update servers.${NC}"
+    exit 1
+fi
 
 echo -e "${WHITE}  PROMETHEUS ENTERPRISE DEPLOYMENT${NC}"
 echo -e "${GRAY}  ─────────────────────────────────────${NC}"

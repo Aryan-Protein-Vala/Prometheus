@@ -3,6 +3,7 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Write-Host "🔥 Initializing Prometheus Enterprise Deployment..." -ForegroundColor Cyan
 
 # 1. Force TLS 1.2
@@ -17,12 +18,29 @@ if (!(Test-Path $InstallBase)) { New-Item -ItemType Directory -Force -Path $Inst
 # 3. Discover Latest Release Assets via GitHub API
 Write-Host "📡 Discovering latest binaries..." -ForegroundColor Cyan
 $Repo = "Aryan-Protein-Vala/Prometheus"
-try {
-    $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
-    $CleanerAsset = $Release.assets | Where-Object { $_.name -like "*windows*" -and ($_.name -like "*tui*" -or $_.name -like "*prometheus-windows*") } | Select-Object -First 1
-    $EnforcerAsset = $Release.assets | Where-Object { $_.name -like "*windows*" -and $_.name -like "*enforcer*" } | Select-Object -First 1
+$MaxRetries = 3
+$RetryCount = 0
+$Success = $false
 
-    if ($CleanerAsset) { $CleanerUrl = $CleanerAsset.browser_download_url }
+while (!$Success -and $RetryCount -lt $MaxRetries) {
+    try {
+        $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 15
+        $CleanerAsset = $Release.assets | Where-Object { $_.name -like "*windows*" -and ($_.name -like "*tui*" -or $_.name -like "*prometheus-windows*") } | Select-Object -First 1
+        $EnforcerAsset = $Release.assets | Where-Object { $_.name -like "*windows*" -and $_.name -like "*enforcer*" } | Select-Object -First 1
+        $Success = $true
+    } catch {
+        $RetryCount++
+        Write-Host "⚠️  Connection slow, retrying ($RetryCount/$MaxRetries)..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+    }
+}
+
+if (!$Success) {
+    Write-Host "❌ FATAL: Could not connect to update servers. Check your internet connection." -ForegroundColor Red
+    exit 1
+}
+
+if ($CleanerAsset) { $CleanerUrl = $CleanerAsset.browser_download_url }
     if ($EnforcerAsset) { $EnforcerUrl = $EnforcerAsset.browser_download_url }
 } catch {
     Write-Host "⚠️  API Discovery failed, using fallback links..." -ForegroundColor Yellow
