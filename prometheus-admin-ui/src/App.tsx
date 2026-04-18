@@ -12,7 +12,18 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [password, setPassword] = useState('');
+  const [dbStatus, setDbStatus] = useState<'checking' | 'active' | 'offline'>('checking');
   const [error, setError] = useState('');
+
+  const checkHealth = async () => {
+    try {
+      const res = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) setDbStatus('active');
+      else setDbStatus('offline');
+    } catch {
+      setDbStatus('offline');
+    }
+  };
 
   const getAuthHeader = () => {
     return localStorage.getItem('prometheus_local_auth') || '';
@@ -60,6 +71,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    checkHealth();
     fetchConfig();
   }, []);
 
@@ -131,6 +143,25 @@ export default function App() {
   const removeApp = (app: string) => {
     updateConfig(blockedDomains, blockedApps.filter(a => a !== app));
   };
+
+  if (dbStatus === 'offline') {
+    return (
+      <div className="flex h-screen bg-[#0a0a0a] text-white items-center justify-center font-mono">
+        <div className="flex flex-col items-center gap-6">
+          <Shield className="w-16 h-16 text-red-900" />
+          <div className="space-y-4 text-center">
+            <h1 className="text-[10px] uppercase tracking-[0.6em] text-red-500">System Offline</h1>
+            <p className="text-[8px] uppercase tracking-widest text-neutral-700 max-w-xs leading-relaxed">
+              Target Node (127.0.0.1:4444) is not responding. Ensure Prometheus Enforcer is running.
+            </p>
+            <button onClick={() => window.location.reload()} className="mt-4 px-6 py-2 border border-white/10 text-[8px] uppercase tracking-widest hover:bg-white/5 transition-all">
+              Re-Establish Link
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

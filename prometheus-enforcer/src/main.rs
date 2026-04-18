@@ -312,16 +312,29 @@ async fn static_handler(uri: Uri) -> impl IntoResponse {
     match Assets::get(path) {
         Some(content) => {
             let mime = mime_guess::from_path(path).first_or_octet_stream();
-            ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
+            Response::builder()
+                .header(header::CONTENT_TYPE, mime.as_ref())
+                .header(header::CACHE_CONTROL, "no-store, must-revalidate")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(axum::body::Body::from(content.data))
+                .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Error").into_response())
         }
         None => {
             if let Some(index) = Assets::get("index.html") {
-                Html(index.data).into_response()
+                Response::builder()
+                    .header(header::CONTENT_TYPE, "text/html")
+                    .header(header::CACHE_CONTROL, "no-store, must-revalidate")
+                    .body(axum::body::Body::from(index.data))
+                    .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Error").into_response())
             } else {
                 (StatusCode::NOT_FOUND, "404 Not Found").into_response()
             }
         }
     }
+}
+
+async fn health_check() -> impl IntoResponse {
+    (StatusCode::OK, Json(serde_json::json!({"status": "active"})))
 }
 
 async fn start_app_killer(state: Arc<AppState>) {
@@ -418,24 +431,16 @@ async fn main() {
     tokio::spawn(start_app_killer(state.clone()));
 
     let app = Router::new()
+        .route("/api/health", get(health_check))
         .route("/api/config", get(get_config).post(update_config))
         .fallback(get(static_handler))
         .with_state(state);
 
-    let addr: SocketAddr = "0.0.0.0:4444".parse().unwrap();
+    let addr: SocketAddr = "127.0.0.1:4444".parse().unwrap();
     
-    // SELF-HEALING: Configure socket with REUSEADDR and REUSEPORT
+    // SELF-HEALING: Configure socket with REUSEADDR
     let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).unwrap();
-    
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = socket.set_reuse_address(true);
-        let _ = socket.set_reuse_port(true);
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let _ = socket.set_reuse_address(true);
-    }
+    let _ = socket.set_reuse_address(true);
 
     socket.bind(&addr.into()).expect("Failed to bind to port 4444");
     socket.listen(128).expect("Failed to listen on port 4444");
