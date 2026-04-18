@@ -15,6 +15,8 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
+use socket2::{Socket, Domain, Type, Protocol};
+use std::net::SocketAddr;
 
 #[derive(RustEmbed)]
 #[folder = "../prometheus-admin-ui/dist/"]
@@ -248,6 +250,17 @@ async fn start_app_killer(state: Arc<AppState>) {
     }
 }
 
+fn fix_file_permissions(path: &Path) {
+    if !path.exists() { return; }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Grant 666 (Read/Write for everyone) to the shared config/log
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o666));
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let config_path = get_config_path();
@@ -264,9 +277,13 @@ async fn main() {
 
     let state = Arc::new(AppState {
         config: Mutex::new(initial_config),
-        config_path,
-        logs_path,
+        config_path: config_path.clone(),
+        logs_path: logs_path.clone(),
     });
+
+    // SELF-HEALING: Fix permissions on start to prevent lockout
+    fix_file_permissions(&config_path);
+    fix_file_permissions(&logs_path);
 
     // Spawn the Application Execution Blocker
     tokio::spawn(start_app_killer(state.clone()));
@@ -282,20 +299,29 @@ async fn main() {
         .layer(cors)
         .with_state(state);
 
-    let addr = "0.0.0.0:4444";
-    match tokio::net::TcpListener::bind(addr).await {
-        Ok(listener) => {
-            println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
-            if let Err(e) = axum::serve(listener, app).await {
-                eprintln!("SERVER ERROR: {}", e);
-            }
-        }
-        Err(e) => {
-            eprintln!("FATAL: Could not bind to {}: {}", addr, e);
-            // On macOS/Linux, we can try to log this to a known absolute path
-            let log_path = "/Users/Shared/prometheus-enforcer-error.log";
-            let _ = fs::write(log_path, format!("CRITICAL BIND ERROR: {}\n", e));
-            std::process::exit(1);
-        }
+    let addr: SocketAddr = "0.0.0.0:4444".parse().unwrap();
+    
+    // SELF-HEALING: Configure socket with REUSEADDR and REUSEPORT
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).unwrap();
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = socket.set_reuse_address(true);
+        let _ = socket.set_reuse_port(true);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = socket.set_reuse_address(true);
+    }
+
+    socket.bind(&addr.into()).expect("Failed to bind to port 4444");
+    socket.listen(128).expect("Failed to listen on port 4444");
+    
+    let listener: std::net::TcpListener = socket.into();
+    let tokio_listener = tokio::net::TcpListener::from_std(listener).unwrap();
+
+    println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
+    if let Err(e) = axum::serve(tokio_listener, app).await {
+        eprintln!("SERVER ERROR: {}", e);
     }
 }

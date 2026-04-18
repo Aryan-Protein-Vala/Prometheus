@@ -133,6 +133,7 @@ After=network.target
 [Service]
 ExecStart=$ENFORCER_PATH
 Restart=always
+RestartSec=5
 User=root
 
 [Install]
@@ -140,7 +141,7 @@ WantedBy=multi-user.target
 EOF
     systemctl daemon-reload 2>/dev/null || true
     systemctl enable prometheus-enforcer 2>/dev/null || true
-    systemctl start prometheus-enforcer 2>/dev/null || true
+    systemctl restart prometheus-enforcer 2>/dev/null || true
 fi
 
 echo -e ""

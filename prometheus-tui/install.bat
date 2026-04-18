@@ -31,10 +31,12 @@ echo start %DASHBOARD_URL% >> "%INSTALL_DIR%\prometheus-admin.bat"
 :: Add to PATH
 setx PATH "%PATH%;%INSTALL_DIR%" /M >nul
 
-:: Register Service
+:: Register Service for High-Availability
+echo  ◦ Registering Background Service...
 sc stop "PrometheusEnforcer" >nul 2>&1
 sc delete "PrometheusEnforcer" >nul 2>&1
-sc create "PrometheusEnforcer" binPath= "%ENFORCER_PATH%" start= auto DisplayName= "Prometheus Enterprise Enforcer" >nul
+sc create "PrometheusEnforcer" binPath= "\"%ENFORCER_PATH%\"" start= auto DisplayName= "Prometheus Enterprise Enforcer" >nul
+sc failure "PrometheusEnforcer" reset= 86400 actions= restart/5000/restart/5000/restart/5000
 sc start "PrometheusEnforcer" >nul
 
 echo.
@@ -42,4 +44,6 @@ echo  ✓ Installation Complete
 echo  ─────────────────────────────────────
 echo  Run cleaner: prometheus
 echo  Run admin:   prometheus-admin
+echo.
+echo  [PRO-TIP] Restart your terminal to refresh the PATH.
 pause
