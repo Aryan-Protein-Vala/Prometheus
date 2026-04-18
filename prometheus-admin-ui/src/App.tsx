@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Network, ListTree, X, Plus, Terminal, Monitor } from 'lucide-react';
+import { Shield, Network, ListTree, X, Plus, Terminal, Monitor, LogOut } from 'lucide-react';
 
 const API_URL = 'http://localhost:4444/api/config';
 
