@@ -14,8 +14,6 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::Mutex;
-use socket2::{Socket, Domain, Type, Protocol};
-use std::net::SocketAddr;
 
 #[derive(RustEmbed)]
 #[folder = "../prometheus-admin-ui/dist/"]
@@ -27,6 +25,12 @@ struct Config {
     blocked_apps: Vec<String>,
     master_password: Option<String>,
     license_key: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FleetSyncResponse {
+    blocked_domains: Vec<String>,
+    blocked_apps: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -53,13 +57,13 @@ const HOSTS_FILE: &str = "/etc/hosts";
 
 fn get_config_path() -> PathBuf {
     #[cfg(target_os = "macos")]
-    { PathBuf::from("/Users/Shared/prometheus-admin.json") }
+    { PathBuf::from("/usr/local/share/prometheus/admin-config.json") }
     #[cfg(target_os = "linux")]
-    { PathBuf::from("/etc/prometheus/admin-config.json") }
+    { PathBuf::from("/usr/local/share/prometheus/admin-config.json") }
     #[cfg(target_os = "windows")]
-    { PathBuf::from(r"C:\ProgramData\Prometheus\admin.json") }
+    { PathBuf::from(r"C:\ProgramData\Prometheus\admin-config.json") }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    { PathBuf::from("admin.json") }
+    { PathBuf::from("admin-config.json") }
 }
 
 fn get_logs_path() -> PathBuf {
@@ -75,13 +79,22 @@ fn get_logs_path() -> PathBuf {
 
 fn get_license_path() -> PathBuf {
     #[cfg(target_os = "macos")]
-    { PathBuf::from("/Users/Shared/prometheus.license") }
+    { PathBuf::from("/usr/local/share/prometheus/license") }
     #[cfg(target_os = "linux")]
-    { PathBuf::from("/etc/prometheus/prometheus.license") }
+    { PathBuf::from("/usr/local/share/prometheus/license") }
     #[cfg(target_os = "windows")]
-    { PathBuf::from(r"C:\ProgramData\Prometheus\prometheus.license") }
+    { PathBuf::from(r"C:\ProgramData\Prometheus\license") }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    { PathBuf::from("prometheus.license") }
+    { PathBuf::from("license") }
+}
+
+fn get_license_key() -> Option<String> {
+    let path = get_license_path();
+    if path.exists() {
+        fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+    } else {
+        None
+    }
 }
 
 async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
@@ -169,62 +182,41 @@ fn flush_dns_cache() {
     }
 }
 
-async fn start_fleet_sync(state: Arc<AppState>) {
+async fn start_cloud_sync(state: Arc<AppState>) {
     let client = reqwest::Client::new();
-    let hwid = machine_uid::get().unwrap_or_else(|_| "UNKNOWN_DEVICE".to_string());
     
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         
-        let license_key = {
-            let config = state.config.lock().await;
-            config.license_key.clone()
-        };
-
-        if let Some(key) = license_key {
-            println!("[FLEET] Synchronizing with Command Center...");
+        if let Some(license_key) = get_license_key() {
+            println!("[CLOUD-SYNC] Polling Command Center for updates...");
             
-            let res = client.post("https://prometheus-cleaner.vercel.app/api/fleet/sync")
-                .json(&serde_json::json!({
-                    "licenseKey": key,
-                    "hwid": hwid,
-                }))
-                .send()
-                .await;
-
-            if let Ok(response) = res {
-                if let Ok(data) = response.json::<serde_json::Value>().await {
-                    if data["success"].as_bool().unwrap_or(false) {
-                        let policy = &data["policy"];
+            let url = format!("https://prometheus-cleaner.vercel.app/api/fleet/sync?key={}", license_key);
+            
+            match client.get(&url).send().await {
+                Ok(response) => {
+                    if let Ok(data) = response.json::<FleetSyncResponse>().await {
                         let mut config = state.config.lock().await;
                         
-                        // Update lists if changed
-                        let remote_domains: Vec<String> = policy["blockedDomains"]
-                            .as_array().unwrap_or(&vec![]).iter()
-                            .map(|v| v.as_str().unwrap_or("").to_string()).collect();
-                        
-                        let remote_apps: Vec<String> = policy["blockedApps"]
-                            .as_array().unwrap_or(&vec![]).iter()
-                            .map(|v| v.as_str().unwrap_or("").to_string()).collect();
+                        // Apply Cloud Policy
+                        config.blocked_domains = data.blocked_domains;
+                        config.blocked_apps = data.blocked_apps;
 
-                        let remote_pass = policy["masterPassword"].as_str().map(|s| s.to_string());
-
-                        if config.blocked_domains != remote_domains || config.blocked_apps != remote_apps || config.master_password != remote_pass {
-                            println!("[FLEET] NEW POLICY RECEIVED: Refreshing Defense Systems.");
-                            config.blocked_domains = remote_domains;
-                            config.blocked_apps = remote_apps;
-                            config.master_password = remote_pass;
-                            
-                            // Persist
-                            if let Ok(json) = serde_json::to_string_pretty(&*config) {
-                                let _ = fs::write(&state.config_path, json);
-                            }
-                            
-                            // Re-sync hosts
-                            let _ = sync_hosts_file(&config.blocked_domains).await;
+                        // Persist immediately
+                        if let Ok(json) = serde_json::to_string_pretty(&*config) {
+                            let _ = fs::write(&state.config_path, json);
                         }
+                        
+                        println!("[CLOUD-SYNC] Policy Updated: {} domains, {} apps.", 
+                            config.blocked_domains.len(), 
+                            config.blocked_apps.len()
+                        );
+
+                        // Enforce network policy immediately
+                        let _ = sync_hosts_file(&config.blocked_domains).await;
                     }
                 }
+                Err(e) => eprintln!("[CLOUD-SYNC] Connection Error: {}", e),
             }
         }
     }
@@ -426,8 +418,8 @@ async fn main() {
     fix_file_permissions(&config_path);
     fix_file_permissions(&logs_path);
 
-    // Spawn Fleet Sync and App Killer
-    tokio::spawn(start_fleet_sync(state.clone()));
+    // Spawn Cloud Sync and App Killer
+    tokio::spawn(start_cloud_sync(state.clone()));
     tokio::spawn(start_app_killer(state.clone()));
 
     let app = Router::new()
