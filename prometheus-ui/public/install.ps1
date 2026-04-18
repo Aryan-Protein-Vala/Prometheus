@@ -42,9 +42,6 @@ if (!$Success) {
 
 if ($CleanerAsset) { $CleanerUrl = $CleanerAsset.browser_download_url }
     if ($EnforcerAsset) { $EnforcerUrl = $EnforcerAsset.browser_download_url }
-} catch {
-    Write-Host "⚠️  API Discovery failed, using fallback links..." -ForegroundColor Yellow
-}
 
 # Fallback/Default URLs if discovery failed
 if (!$CleanerUrl) { $CleanerUrl = "https://github.com/$Repo/releases/latest/download/prometheus-windows-x64.exe" }
