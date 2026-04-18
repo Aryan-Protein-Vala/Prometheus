@@ -57,7 +57,7 @@ if ($CleanerProc) {
     Stop-Process -Name "prometheus" -Force
 }
 
-# Robust Download via BITS or WebClient
+# Robust Download via BITS with WebClient Fallback
 function Download-File {
     param([string]$Url, [string]$Dest)
     $MaxRetries = 3
@@ -66,19 +66,30 @@ function Download-File {
 
     while (!$Done -and $StepCount -lt $MaxRetries) {
         try {
+            # Try BITS first (Efficient)
             if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
+                Write-Host "   ◦ Connection attempt via BITS..." -ForegroundColor Gray
                 Start-BitsTransfer -Source $Url -Destination $Dest -ErrorAction Stop
-            } else {
-                (New-Object System.Net.WebClient).DownloadFile($Url, $Dest)
-            }
-            $Done = $true
+                $Done = $true
+            } else { throw "BITS not available" }
         } catch {
-            $StepCount++
-            Write-Host "⚠️  Download interrupted, retrying ($StepCount/$MaxRetries)..." -ForegroundColor Yellow
-            Start-Sleep -Seconds 3
+            try {
+                # Fallback to WebClient (Reliable)
+                Write-Host "   ◦ BITS blocked, switching to WebClient engine..." -ForegroundColor Gray
+                $wc = New-Object System.Net.WebClient
+                $wc.DownloadFile($Url, $Dest)
+                $Done = $true
+            } catch {
+                $StepCount++
+                Write-Host "⚠️  Download interrupted by system ($StepCount/$MaxRetries)..." -ForegroundColor Yellow
+                if ($StepCount -eq $MaxRetries) {
+                    Write-Host "💡 HINT: An Antivirus or Firewall might be blocking the binary download." -ForegroundColor Gray
+                }
+                Start-Sleep -Seconds 3
+            }
         }
     }
-    if (!$Done) { throw "Could not download $Url after multiple attempts." }
+    if (!$Done) { throw "Could not download $Url" }
 }
 
 Download-File -Url $CleanerUrl -Dest "$BinDir\prometheus.exe"
