@@ -121,8 +121,11 @@ try {
     Start-Process $Binary -WindowStyle Hidden
 }
 
-# Final shim creation with safe quoting
-$ShimContent = "@echo off`r`nstart `"`" `"http://localhost:4444`""
+# Final shim creation with indestructible Here-String syntax
+$ShimContent = @"
+@echo off
+start "" "http://localhost:4444"
+"@
 $ShimContent | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 Write-Host ""
