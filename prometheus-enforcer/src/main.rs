@@ -482,14 +482,32 @@ async fn main() {
         .fallback(get(static_handler))
         .with_state(state);
 
-    let addrs = [
-        std::net::SocketAddr::from(([127, 0, 0, 1], 4444)),
-        std::net::SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], 4444)),
-    ];
-    let listener = tokio::net::TcpListener::bind(&addrs[..]).await.expect("Failed to bind to loopback:4444");
+    // HARDENED BINDING: Use socket2 for robust dual-stack + port reclamation
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 0], 4444));
+    let socket = socket2::Socket::new(
+        socket2::Domain::for_address(addr),
+        socket2::Type::STREAM,
+        Some(socket2::Protocol::TCP),
+    ).expect("Failed to create socket");
+
+    // Allow instant port reclamation (Prevents "Address already in use" flakes)
+    socket.set_reuse_address(true).ok();
+    #[cfg(all(unix, not(target_os = "solaris"), not(target_os = "illumos")))]
+    socket.set_reuse_port(true).ok();
     
-    let addr = listener.local_addr().unwrap();
-    println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
+    // Enable Dual-Stack (IPv4 on IPv6)
+    if addr.is_ipv6() {
+        socket.set_only_v6(false).ok();
+    }
+
+    socket.bind(&addr.into()).expect("Failed to bind to [::]:4444");
+    socket.listen(128).expect("Failed to listen on socket");
+    
+    let std_listener: std::net::TcpListener = socket.into();
+    std_listener.set_nonblocking(true).expect("Failed to set non-blocking");
+    let listener = tokio::net::TcpListener::from_std(std_listener).expect("Failed to convert to tokio listener");
+
+    println!("PROMETHEUS ENFORCER ACTIVE: http://localhost:4444 (Hardened Dual-Stack)");
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("SERVER ERROR: {}", e);
     }

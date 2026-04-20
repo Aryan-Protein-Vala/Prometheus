@@ -50,8 +50,8 @@ try {
 }
 
 # Fallback URLs
-if (!$CleanerUrl) { $CleanerUrl = "https://prometheus-cleaner.vercel.app/prometheus-windows-x64.exe" }
-if (!$EnforcerUrl) { $EnforcerUrl = "https://prometheus-cleaner.vercel.app/prometheus-enforcer-windows-x64.exe" }
+if (!$CleanerUrl) { $CleanerUrl = "https://prometheus-corp.vercel.app/prometheus-windows-x64.exe" }
+if (!$EnforcerUrl) { $EnforcerUrl = "https://prometheus-corp.vercel.app/prometheus-enforcer-windows-x64.exe" }
 
 # 6. Stealth Download Engine
 function Download-File {
@@ -94,12 +94,18 @@ Stop-Process -Name "prometheus-enforcer" -Force -ErrorAction SilentlyContinue
 Download-File -Url $EnforcerUrl -Dest "$BinDir\prometheus-enforcer.exe"
 Unblock-File -Path "$BinDir\prometheus-enforcer.exe" -ErrorAction SilentlyContinue
 
-# 7. Network Security - Precision Firewall Override
-Write-Host "[AUTH] Configuring Network Firewall..." -ForegroundColor Gray
+# 7. Network Security - Precision Firewall & Loopback Harden
+Write-Host "[AUTH] Configuring Network Firewall & Loopback Exemptions..." -ForegroundColor Gray
 $EnforcerPath = "$BinDir\prometheus-enforcer.exe"
 try {
     # Precision Rule: Allow the specific binary to bind to its loopback port
     New-NetFirewallRule -DisplayName "Prometheus Enterprise" -Direction Inbound -Program $EnforcerPath -Action Allow -LocalAddress 127.0.0.1, ::1 -ErrorAction SilentlyContinue | Out-Null
+    
+    # Loopback Exemption: Allow modern browsers (Edge/UWP) to hit localhost:4444
+    if (Get-Command CheckNetIsolation -ErrorAction SilentlyContinue) {
+        CheckNetIsolation.exe LoopbackExempt -a -n="Microsoft.MicrosoftEdge_8wekyb3d8bbwe" | Out-Null
+        CheckNetIsolation.exe LoopbackExempt -a -n="Microsoft.Win32WebViewHost_cw5n1h2txyewy" | Out-Null
+    }
 } catch {}
 
 # 8. Global PATH Registration

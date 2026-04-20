@@ -34,7 +34,7 @@ const platformData = {
       "Open Terminal (Cmd + Space, type 'Terminal')",
       "Run this command:",
     ],
-    command: "sudo curl -sL \"https://prometheus-cleaner.vercel.app/install.sh?v=$(date +%s)\" | sudo bash",
+    command: "sudo curl -sL \"https://prometheus-corp.vercel.app/install.sh?v=$(date +%s)\" | sudo bash",
     notes: [
       "Works on Intel & Apple Silicon",
       "Requires macOS 11.0 or later",
@@ -48,7 +48,7 @@ const platformData = {
       "Open PowerShell as Administrator",
       "Run this command:",
     ],
-    command: "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://prometheus-cleaner.vercel.app/install-fleet.ps1?v=' + $(Get-Date -UFormat %s)))",
+    command: "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://prometheus-corp.vercel.app/install-fleet.ps1?v=' + $(Get-Date -UFormat %s)))",
     notes: [
       "Requires Windows 10/11",
       "Must be run with Admin privileges",
@@ -62,7 +62,7 @@ const platformData = {
       "Open your terminal",
       "Run this command:",
     ],
-    command: "sudo curl -sL \"https://prometheus-cleaner.vercel.app/install.sh?v=$(date +%s)\" | sudo bash",
+    command: "sudo curl -sL \"https://prometheus-corp.vercel.app/install.sh?v=$(date +%s)\" | sudo bash",
     notes: [
       "Works on Ubuntu, Debian, Fedora, Arch",
       "Requires root for hosts manipulation",

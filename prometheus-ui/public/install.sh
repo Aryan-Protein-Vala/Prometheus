@@ -18,7 +18,7 @@ CONFIG_DIR="/etc/prometheus"
 
 # 2. Define High-Availability Assets (Vercel Primary)
 echo "[NET] Securing high-availability assets..."
-DOMAIN="https://prometheus-cleaner.vercel.app"
+DOMAIN="https://prometheus-corp.vercel.app"
 
 case "$(uname -s)" in
     Darwin*)
