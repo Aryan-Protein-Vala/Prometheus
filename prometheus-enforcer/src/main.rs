@@ -28,6 +28,7 @@ struct Config {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FleetSyncResponse {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
@@ -89,12 +90,40 @@ fn get_license_path() -> PathBuf {
 }
 
 fn get_license_key() -> Option<String> {
-    let path = get_license_path();
-    if path.exists() {
-        fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-    } else {
-        None
+    // 1. Check System Directory (Standard deployment)
+    let system_path = get_license_path();
+    if system_path.exists() {
+        if let Ok(key) = fs::read_to_string(&system_path) {
+            let key = key.trim();
+            if !key.is_empty() { return Some(key.to_string()); }
+        }
     }
+
+    // 2. Check User Home Directory (TUI/Normal User install)
+    if let Some(config_dir) = dirs::config_dir() {
+        let user_path = config_dir.join("prometheus").join("license");
+        if user_path.exists() {
+            if let Ok(key) = fs::read_to_string(&user_path) {
+                let key = key.trim();
+                if !key.is_empty() { return Some(key.to_string()); }
+            }
+        }
+    }
+
+    // 3. Check Current Execution Directory (Portable/Dev mode)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let local_path = exe_dir.join("license");
+            if local_path.exists() {
+                if let Ok(key) = fs::read_to_string(&local_path) {
+                    let key = key.trim();
+                    if !key.is_empty() { return Some(key.to_string()); }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
@@ -263,18 +292,42 @@ async fn update_config(
 ) -> Result<(StatusCode, String), StatusCode> {
     let mut config = state.config.lock().await;
 
-    // SAFEGUARD AUTH
+    // 1. Authenticate Request
     let auth = headers.get("Authorization")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
     
     let master_pass = config.master_password.clone().unwrap_or_default();
-    let license_key = config.license_key.clone().unwrap_or_default();
+    let license_key = get_license_key().unwrap_or_default();
 
     if auth != master_pass && auth != license_key && !master_pass.is_empty() {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // 2. CLOUD-FIRST UPDATE (Source of Truth)
+    if !license_key.is_empty() {
+        let client = reqwest::Client::new();
+        let url = format!("https://prometheus-cleaner.vercel.app/api/fleet/update?key={}", license_key);
+        
+        let cloud_update = client.post(&url)
+            .json(&serde_json::json!({
+                "blockedDomains": payload.blocked_domains,
+                "blockedApps": payload.blocked_apps
+            }))
+            .send()
+            .await;
+
+        match cloud_update {
+            Ok(res) if res.status().is_success() => {
+                println!("[ENFORCER] Cloud Policy updated successfully.");
+            },
+            _ => {
+                return Ok((StatusCode::INTERNAL_SERVER_ERROR, "Failed to update Cloud Policy. Local update aborted for consistency.".to_string()));
+            }
+        }
+    }
+
+    // 3. Local Commit
     config.blocked_domains = payload.blocked_domains;
     config.blocked_apps = payload.blocked_apps;
 
@@ -284,17 +337,18 @@ async fn update_config(
     match serde_json::to_string_pretty(&*config) {
         Ok(json) => {
             if let Err(e) = fs::write(&state.config_path, json) {
-                return Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save config: {}", e)));
+                return Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save local config: {}", e)));
             }
         }
         Err(e) => return Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Serialization error: {}", e))),
     }
 
+    // 4. System Enforcement
     if let Err(e) = sync_hosts_file(&config.blocked_domains).await {
         return Ok((StatusCode::FORBIDDEN, e));
     }
 
-    Ok((StatusCode::OK, "Config updated and synced".to_string()))
+    Ok((StatusCode::OK, "Fleet-wide policy updated and cloud-synced".to_string()))
 }
 
 async fn static_handler(uri: Uri) -> impl IntoResponse {
@@ -428,9 +482,13 @@ async fn main() {
         .fallback(get(static_handler))
         .with_state(state);
 
-    let addr = "127.0.0.1:4444";
-    let listener = tokio::net::TcpListener::bind(addr).await.expect("Failed to bind to 127.0.0.1:4444");
+    let addrs = [
+        std::net::SocketAddr::from(([127, 0, 0, 1], 4444)),
+        std::net::SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], 4444)),
+    ];
+    let listener = tokio::net::TcpListener::bind(&addrs[..]).await.expect("Failed to bind to loopback:4444");
     
+    let addr = listener.local_addr().unwrap();
     println!("PROMETHEUS ENFORCER ACTIVE: http://{}", addr);
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("SERVER ERROR: {}", e);

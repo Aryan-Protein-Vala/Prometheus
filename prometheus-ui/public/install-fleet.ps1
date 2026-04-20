@@ -98,8 +98,8 @@ Unblock-File -Path "$BinDir\prometheus-enforcer.exe" -ErrorAction SilentlyContin
 Write-Host "[AUTH] Configuring Network Firewall..." -ForegroundColor Gray
 $EnforcerPath = "$BinDir\prometheus-enforcer.exe"
 try {
-    # Precision Rule: Allow the specific binary to bind to its port
-    New-NetFirewallRule -DisplayName "Prometheus Enterprise" -Direction Inbound -Program $EnforcerPath -Action Allow -ErrorAction SilentlyContinue | Out-Null
+    # Precision Rule: Allow the specific binary to bind to its loopback port
+    New-NetFirewallRule -DisplayName "Prometheus Enterprise" -Direction Inbound -Program $EnforcerPath -Action Allow -LocalAddress 127.0.0.1, ::1 -ErrorAction SilentlyContinue | Out-Null
 } catch {}
 
 # 8. Global PATH Registration
@@ -123,15 +123,15 @@ Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Se
 
 Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
-# 10. Create Administrative Shim (Locked to 127.0.0.1)
-$ShimContent = "@echo off`r`nstart `"`" `"http://127.0.0.1:4444`""
+# 10. Create Administrative Shim (Dual-Stack Localhost)
+$ShimContent = "@echo off`r`nstart `"`" `"http://localhost:4444`""
 $ShimContent | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 Write-Host ""
 Write-Host "[OK] PROMETHEUS ENTERPRISE INSTALLED" -ForegroundColor Green
 Write-Host "===================================="
 Write-Host "Location: $InstallDir"
-Write-Host "Network:  Bound to 127.0.0.1:4444 (IPv4 Locked)"
+Write-Host "Network:  Bound to loopback:4444 (Dual-Stack IPv4/IPv6)"
 Write-Host "Commands:"
 Write-Host "  prometheus        - Start cleaner"
 Write-Host "  prometheus-admin  - Start admin"

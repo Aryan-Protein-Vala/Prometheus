@@ -7,48 +7,38 @@ import prisma from '../../../../lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const key = searchParams.get('key');
+    
     const body = await request.json();
-    const { licenseKey, blockedDomains, blockedApps, masterPassword } = body;
+    const { blockedDomains, blockedApps } = body;
 
-    if (!licenseKey) {
+    if (!key) {
       return NextResponse.json({ error: 'License key is required' }, { status: 400 });
     }
 
-    // 1. Authenticate with License Key
-    const license = await prisma.license.findUnique({
-      where: { key: licenseKey }
-    });
-
-    if (!license) {
-      return NextResponse.json({ error: 'Unauthorized: Invalid License Key' }, { status: 401 });
-    }
-
-    // 2. Upsert the Fleet Policy
-    const policy = await prisma.fleetPolicy.upsert({
-      where: { licenseId: license.id },
-      update: {
+    // 1. Update the License Model directly (Single Source of Truth)
+    const updatedLicense = await prisma.license.update({
+      where: { key: key },
+      data: {
         blockedDomains: blockedDomains || [],
-        blockedApps: blockedApps || [],
-        masterPassword: masterPassword
-      },
-      create: {
-        licenseId: license.id,
-        blockedDomains: blockedDomains || [],
-        blockedApps: blockedApps || [],
-        masterPassword: masterPassword
+        blockedApps: blockedApps || []
       }
     });
 
-    console.log(`[FLEET] Global Policy updated for organization: ${license.email}`);
+    console.log(`[FLEET] Cloud Policy synchronized for License: ${key}`);
 
     return NextResponse.json({
       success: true,
-      message: 'Global Management Policy updated. Fleet will sync within 60 seconds.',
-      policy
+      message: 'Cloud Policy Updated. All fleet instances will synchronize automatically.',
+      policy: {
+        blockedDomains: updatedLicense.blockedDomains,
+        blockedApps: updatedLicense.blockedApps
+      }
     });
 
   } catch (error) {
     console.error('Fleet policy update error:', error);
-    return NextResponse.json({ error: 'Failed to update fleet policy' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to synchronize cloud policy' }, { status: 500 });
   }
 }

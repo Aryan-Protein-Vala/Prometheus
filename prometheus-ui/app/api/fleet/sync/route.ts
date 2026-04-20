@@ -2,96 +2,39 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
 
 // ═══════════════════════════════════════════════════════════════════════════
-//                    F L E E T   S Y N C   ( H E A R T B E A T )
+//                    F L E E T   S Y N C   ( G E T   V E R S I O N )
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // This API is used by the Prometheus Enforcer to:
-// 1. Register new devices without "burning" license uses twice.
-// 2. Fetch the latest Fleet Policy (blocklists, master password).
-// 3. Update the 'last seen' status of the machine.
+// 1. Fetch the latest Fleet Policy (blocklists) from the License source.
+// 2. Ensure a single source of truth for the entire fleet.
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { licenseKey, hwid, machineName } = body;
+    const { searchParams } = new URL(request.url);
+    const key = searchParams.get('key');
 
-    if (!licenseKey || !hwid) {
-      return NextResponse.json({ error: 'License key and HWID are required' }, { status: 400 });
+    if (!key) {
+      return NextResponse.json({ error: 'License key is required' }, { status: 400 });
     }
 
-    // 1. Find License
+    // 1. Find License and its Policy
     const license = await prisma.license.findUnique({
-      where: { key: licenseKey },
-      include: { 
-        devices: true,
-        fleetPolicy: true 
-      }
+      where: { key: key }
     });
 
     if (!license) {
-      return NextResponse.json({ valid: false, message: 'License key not recognized' }, { status: 404 });
+      return NextResponse.json({ error: 'Invalid License' }, { status: 404 });
     }
 
-    // 2. Find or Register Device
-    let device = license.devices.find(d => d.hwid === hwid);
-    
-    if (!device) {
-      // Check device limit
-      if (license.uses >= license.maxUses) {
-        return NextResponse.json({ 
-          valid: false, 
-          message: 'Fleet capacity reached. Unauthorized device.' 
-        }, { status: 403 });
-      }
-
-      // Register new device and increment usage
-      device = await prisma.device.create({
-        data: {
-          hwid: hwid,
-          licenseId: license.id
-        }
-      });
-
-      await prisma.license.update({
-        where: { id: license.id },
-        data: { uses: { increment: 1 } }
-      });
-      
-      console.log(`[FLEET] Registered new device ${hwid} for license ${licenseKey}`);
-    } else {
-      // Update last seen
-      await prisma.device.update({
-        where: { id: device.id },
-        data: { lastSeen: new Date() }
-      });
-    }
-
-    // 3. Prepare Policy Response
-    // If no policy exists yet, create a default one
-    let policy = license.fleetPolicy;
-    if (!policy) {
-      policy = await prisma.fleetPolicy.create({
-        data: {
-          licenseId: license.id,
-          blockedDomains: [],
-          blockedApps: []
-        }
-      });
-    }
-
+    // 2. Return Exact Sync Structure (Null-Safe)
     return NextResponse.json({
-      success: true,
-      deviceId: device.id,
-      policy: {
-        blockedDomains: policy.blockedDomains,
-        blockedApps: policy.blockedApps,
-        masterPassword: policy.masterPassword,
-        updatedAt: policy.updatedAt
-      }
+      blockedDomains: license.blockedDomains || [],
+      blockedApps: license.blockedApps || []
     });
 
   } catch (error) {
     console.error('Fleet sync error:', error);
-    return NextResponse.json({ error: 'Internal system error during sync' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal sync error' }, { status: 500 });
   }
 }
