@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===========================================================================
-#  PROMETHEUS ENTERPRISE FLEET INSTALLER - Unix (v1.3.24)
+#  PROMETHEUS ENTERPRISE FLEET INSTALLER - Unix (v1.3.26)
 # ===========================================================================
 
 set -e
@@ -8,7 +8,7 @@ set -e
 # 1. Require Root
 if [ "$EUID" -ne 0 ]; then
   echo "Please run this installer with sudo."
-  exit
+  exit 1
 fi
 
 INSTALL_PATH="/usr/local/bin/prometheus"
@@ -120,6 +120,10 @@ if [[ "$(uname -s)" == "Darwin"* ]]; then
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>StandardOutPath</key>
+    <string>/var/log/prometheus-enforcer.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/prometheus-enforcer.err</string>
 </dict>
 </plist>
 EOF

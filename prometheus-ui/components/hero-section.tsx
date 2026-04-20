@@ -34,7 +34,7 @@ const platformData = {
       "Open Terminal (Cmd + Space, type 'Terminal')",
       "Run this command:",
     ],
-    command: "sudo curl -sL https://raw.githubusercontent.com/Aryan-Protein-Vala/Prometheus/main/prometheus-ui/public/install.sh?v=$(date +%s) | sudo bash",
+    command: "sudo curl -sL \"https://raw.githubusercontent.com/Aryan-Protein-Vala/Prometheus/main/prometheus-ui/public/install.sh?v=$(date +%s)\" | sudo bash",
     notes: [
       "Works on Intel & Apple Silicon",
       "Requires macOS 11.0 or later",
