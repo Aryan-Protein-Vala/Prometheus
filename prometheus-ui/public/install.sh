@@ -62,9 +62,9 @@ echo "[SYS] Creating shims..."
 cat > "$ADMIN_CMD_PATH" <<EOF
 #!/bin/bash
 if command -v open &> /dev/null; then
-    open http://localhost:4444
+    open http://127.0.0.1:4444
 elif command -v xdg-open &> /dev/null; then
-    xdg-open http://localhost:4444
+    xdg-open http://127.0.0.1:4444
 fi
 EOF
 chmod +x "$ADMIN_CMD_PATH"

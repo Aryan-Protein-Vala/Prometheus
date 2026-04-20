@@ -101,7 +101,7 @@ try {
     # Precision Rule: Allow the specific binary to bind to its loopback port
     New-NetFirewallRule -DisplayName "Prometheus Enterprise" -Direction Inbound -Program $EnforcerPath -Action Allow -LocalAddress 127.0.0.1, ::1 -ErrorAction SilentlyContinue | Out-Null
     
-    # Loopback Exemption: Allow modern browsers (Edge/UWP) to hit localhost:4444
+    # Loopback Exemption: Allow modern browsers (Edge/UWP) to hit 127.0.0.1:4444
     if (Get-Command CheckNetIsolation -ErrorAction SilentlyContinue) {
         CheckNetIsolation.exe LoopbackExempt -a -n="Microsoft.MicrosoftEdge_8wekyb3d8bbwe" | Out-Null
         CheckNetIsolation.exe LoopbackExempt -a -n="Microsoft.Win32WebViewHost_cw5n1h2txyewy" | Out-Null

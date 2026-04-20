@@ -476,10 +476,16 @@ async fn main() {
     tokio::spawn(start_cloud_sync(state.clone()));
     tokio::spawn(start_app_killer(state.clone()));
 
+    let cors = tower_http::cors::CorsLayer::new()
+        .allow_origin(tower_http::cors::Any) // Safe for local-only binary
+        .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+        .allow_headers([axum::http::header::AUTHORIZATION, axum::http::header::CONTENT_TYPE]);
+
     let app = Router::new()
         .route("/api/health", get(health_check))
         .route("/api/config", get(get_config).post(update_config))
         .fallback(get(static_handler))
+        .layer(cors)
         .with_state(state);
 
     // HARDENED BINDING: Use socket2 for robust dual-stack + port reclamation
