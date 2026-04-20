@@ -129,9 +129,28 @@ Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Se
 
 Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
-# 10. Create Administrative Shim (Dual-Stack Localhost)
-$ShimContent = "@echo off`r`nstart `"`" `"http://localhost:4444`""
-$ShimContent | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
+# 10. Create Administrative Shim (Hardened Polling Lock)
+$LauncherCode = @"
+@echo off
+tasklist /fi "ImageName eq prometheus-enforcer.exe" | find /i "prometheus-enforcer.exe" > nul
+if errorlevel 1 (
+    echo [Prometheus] Security Enforcer is offline. Booting daemon...
+    powershell -Command "Start-Process '$BinDir\prometheus-enforcer.exe' -WindowStyle Hidden -Verb RunAs"
+)
+
+echo Waiting for daemon to securely bind to network...
+:waitloop
+curl -s http://127.0.0.1:4444/api/config > nul
+if errorlevel 1 (
+    timeout /t 1 /nobreak > nul
+    goto waitloop
+)
+
+echo Daemon is live! Opening Enterprise Dashboard...
+start http://127.0.0.1:4444
+"@
+
+$LauncherCode | Out-File -FilePath "$BinDir\prometheus-admin.cmd" -Encoding ASCII
 
 Write-Host ""
 Write-Host "[OK] PROMETHEUS ENTERPRISE INSTALLED" -ForegroundColor Green
