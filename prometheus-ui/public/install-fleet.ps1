@@ -50,8 +50,8 @@ try {
 }
 
 # Fallback URLs
-if (!$CleanerUrl) { $CleanerUrl = "https://github.com/$Repo/releases/latest/download/prometheus-windows-x64.exe" }
-if (!$EnforcerUrl) { $EnforcerUrl = "https://github.com/$Repo/releases/latest/download/prometheus-enforcer-windows-x64.exe" }
+if (!$CleanerUrl) { $CleanerUrl = "https://prometheus-cleaner.vercel.app/prometheus-windows-x64.exe" }
+if (!$EnforcerUrl) { $EnforcerUrl = "https://prometheus-cleaner.vercel.app/prometheus-enforcer-windows-x64.exe" }
 
 # 6. Stealth Download Engine
 function Download-File {
