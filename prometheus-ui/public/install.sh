@@ -55,8 +55,8 @@ if [ "$SUCCESS" = false ]; then
         Darwin*)
             ARCH=$(uname -m)
             if [ "$ARCH" = "arm64" ]; then
-                CLEANER_URL="$BASE_URL/prometheus-macos-arm64"
-                ENFORCER_URL="$BASE_URL/prometheus-enforcer-macos-arm64"
+                CLEANER_URL="https://prometheus-cleaner.vercel.app/prometheus-macos-arm64"
+                ENFORCER_URL="https://prometheus-cleaner.vercel.app/prometheus-enforcer-macos-arm64"
             else
                 CLEANER_URL="$BASE_URL/prometheus-macos-x64"
                 ENFORCER_URL="$BASE_URL/prometheus-enforcer-macos-x64"
