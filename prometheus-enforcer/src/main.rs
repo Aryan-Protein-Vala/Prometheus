@@ -220,7 +220,7 @@ async fn start_cloud_sync(state: Arc<AppState>) {
         if let Some(license_key) = get_license_key() {
             println!("[CLOUD-SYNC] Polling Command Center for updates...");
             
-            let url = format!("https://prometheus-cleaner.vercel.app/api/fleet/sync?key={}", license_key);
+            let url = format!("https://prometheus-corp.vercel.app/api/fleet/sync?key={}", license_key);
             
             match client.get(&url).send().await {
                 Ok(response) => {
@@ -307,7 +307,7 @@ async fn update_config(
     // 2. CLOUD-FIRST UPDATE (Source of Truth)
     if !license_key.is_empty() {
         let client = reqwest::Client::new();
-        let url = format!("https://prometheus-cleaner.vercel.app/api/fleet/update?key={}", license_key);
+        let url = format!("https://prometheus-corp.vercel.app/api/fleet/update?key={}", license_key);
         
         let cloud_update = client.post(&url)
             .json(&serde_json::json!({
