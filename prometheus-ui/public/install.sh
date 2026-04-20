@@ -16,58 +16,26 @@ ENFORCER_PATH="/usr/local/bin/prometheus-enforcer"
 ADMIN_CMD_PATH="/usr/local/bin/prometheus-admin"
 CONFIG_DIR="/etc/prometheus"
 
-# 2. Discover Latest Release Assets via GitHub API
-echo "[NET] Discovering latest binaries..."
-REPO="Aryan-Protein-Vala/Prometheus"
-MAX_RETRIES=3
-RETRY_COUNT=0
-SUCCESS=false
+# 2. Define High-Availability Assets (Vercel Primary)
+echo "[NET] Securing high-availability assets..."
+DOMAIN="https://prometheus-cleaner.vercel.app"
 
-while [ "$SUCCESS" = false ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    RELEASE_DATA=$(curl -s --connect-timeout 10 "https://api.github.com/repos/$REPO/releases/latest")
-    
-    # OS Detection for naming
-    case "$(uname -s)" in
-        Darwin*)
-            CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep -v 'enforcer' | head -1)
-            ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*mac[^"]*' | grep 'enforcer' | head -1)
-            ;;
-        Linux*)
-            CLEANER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep -v 'enforcer' | head -1)
-            ENFORCER_URL=$(echo "$RELEASE_DATA" | grep -o 'https://[^"]*linux[^"]*' | grep 'enforcer' | head -1)
-            ;;
-    esac
-
-    if [ -n "$CLEANER_URL" ] && [ -n "$ENFORCER_URL" ]; then
-        SUCCESS=true
-    else
-        RETRY_COUNT=$((RETRY_COUNT+1))
-        echo "[WARN] Connection slow, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
-        sleep 2
-    fi
-done
-
-if [ "$SUCCESS" = false ]; then
-    # Fallback to direct download logic if API discovery failed
-    echo "[WARN] API Discovery failed, using fallback URLs..."
-    BASE_URL="https://github.com/$REPO/releases/latest/download"
-    case "$(uname -s)" in
-        Darwin*)
-            ARCH=$(uname -m)
-            if [ "$ARCH" = "arm64" ]; then
-                CLEANER_URL="https://prometheus-cleaner.vercel.app/prometheus-macos-arm64"
-                ENFORCER_URL="https://prometheus-cleaner.vercel.app/prometheus-enforcer-macos-arm64"
-            else
-                CLEANER_URL="$BASE_URL/prometheus-macos-x64"
-                ENFORCER_URL="$BASE_URL/prometheus-enforcer-macos-x64"
-            fi
-            ;;
-        Linux*)
-            CLEANER_URL="$BASE_URL/prometheus-linux-x64"
-            ENFORCER_URL="$BASE_URL/prometheus-enforcer-linux-x64"
-            ;;
-    esac
-fi
+case "$(uname -s)" in
+    Darwin*)
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "arm64" ]; then
+            CLEANER_URL="$DOMAIN/prometheus-macos-arm64"
+            ENFORCER_URL="$DOMAIN/prometheus-enforcer-macos-arm64"
+        else
+            CLEANER_URL="$DOMAIN/prometheus-macos-x64"
+            ENFORCER_URL="$DOMAIN/prometheus-enforcer-macos-x64"
+        fi
+        ;;
+    Linux*)
+        CLEANER_URL="$DOMAIN/prometheus-linux-x64"
+        ENFORCER_URL="$DOMAIN/prometheus-enforcer-linux-x64"
+        ;;
+esac
 
 echo "[DATA] Downloading Prometheus Enterprise suite..."
 
