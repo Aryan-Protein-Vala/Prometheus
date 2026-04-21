@@ -65,12 +65,14 @@ function Download-File {
         try {
             if (Test-Path $TempDest) { Remove-Item -Path $TempDest -Force -ErrorAction SilentlyContinue }
             if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
-                Start-BitsTransfer -Source $Url -Destination $TempDest -ErrorAction Stop
+                Start-BitsTransfer -Source $Url -Destination $TempDest -Priority High -ErrorAction Stop
             } else {
                 (New-Object System.Net.WebClient).DownloadFile($Url, $TempDest)
             }
             
             if (Test-Path $TempDest) {
+                # TACTICAL DELAY: Give Windows Defender time to finish scanning
+                Start-Sleep -Seconds 2
                 Write-Host "   -> Verification successful. Unblocking..." -ForegroundColor Gray
                 Unblock-File -Path $TempDest -ErrorAction SilentlyContinue
                 Move-Item -Path $TempDest -Destination $Dest -Force
@@ -78,8 +80,8 @@ function Download-File {
             }
         } catch {
             $StepCount++
-            Write-Host "[WARN] System blocked attempt ($StepCount/$MaxRetries)... Retrying." -ForegroundColor Yellow
-            Start-Sleep -Seconds 3
+            Write-Host "[WARN] System scan interference or lock detected ($StepCount/$MaxRetries)... Retrying." -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
         }
     }
     if (!$Done) { throw "Download Failed" }
