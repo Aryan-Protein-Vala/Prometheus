@@ -185,20 +185,20 @@ export default function App() {
              <Shield className="w-12 h-12 text-emerald-500 animate-pulse" />
            </div>
            <div className="space-y-2">
-             <h1 className="text-xl uppercase tracking-[0.4em]">Safeguard Mode</h1>
-             <p className="text-[10px] text-neutral-500 tracking-widest uppercase">Admin Terminal Access Encrypted</p>
+             <h1 className="text-xl uppercase tracking-[0.4em]">License Required</h1>
+             <p className="text-[10px] text-neutral-500 tracking-widest uppercase">Prometheus Enterprise Terminal Locked</p>
            </div>
            <form onSubmit={handleLogin} className="space-y-4">
              <input
                type="password"
                value={password}
                onChange={(e) => setPassword(e.target.value)}
-               placeholder="ENTER MASTER KEY"
+               placeholder="ENTER LICENSE KEY"
                className="w-full bg-transparent border border-[#262626] px-4 py-4 text-center text-xs focus:border-white outline-none transition-all placeholder:text-neutral-700 uppercase"
                autoFocus
              />
              <button type="submit" className="w-full bg-white text-black py-4 text-xs font-bold uppercase tracking-[0.2em] hover:bg-neutral-200 transition-all">
-               Access Fleet Node
+               Authenticate & Connect
              </button>
            </form>
            {error && <p className="text-[10px] text-red-500 uppercase tracking-widest">{error}</p>}
