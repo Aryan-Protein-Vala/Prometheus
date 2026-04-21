@@ -263,7 +263,7 @@ async fn get_config(
         .unwrap_or("");
     
     let master_pass = config.master_password.clone().unwrap_or_default();
-    let license_key = config.license_key.clone().unwrap_or_default();
+    let license_key = get_license_key().unwrap_or_default();
 
     // STRICT AUTH: Require either License Key or Master Password at all costs
     let is_authorized = (!master_pass.is_empty() && auth == master_pass) || 

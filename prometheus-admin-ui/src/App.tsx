@@ -59,8 +59,9 @@ export default function App() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password) return;
-    localStorage.setItem('prometheus_local_auth', password);
+    const cleanPassword = password.trim();
+    if (!cleanPassword) return;
+    localStorage.setItem('prometheus_local_auth', cleanPassword);
     fetchConfig();
   };
 
