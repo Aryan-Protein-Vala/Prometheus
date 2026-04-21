@@ -265,7 +265,11 @@ async fn get_config(
     let master_pass = config.master_password.clone().unwrap_or_default();
     let license_key = config.license_key.clone().unwrap_or_default();
 
-    if auth != master_pass && auth != license_key && !master_pass.is_empty() {
+    // STRICT AUTH: Require either License Key or Master Password at all costs
+    let is_authorized = (!master_pass.is_empty() && auth == master_pass) || 
+                        (!license_key.is_empty() && auth == license_key);
+
+    if !is_authorized {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -300,7 +304,11 @@ async fn update_config(
     let master_pass = config.master_password.clone().unwrap_or_default();
     let license_key = get_license_key().unwrap_or_default();
 
-    if auth != master_pass && auth != license_key && !master_pass.is_empty() {
+    // STRICT AUTH: Require either License Key or Master Password at all costs
+    let is_authorized = (!master_pass.is_empty() && auth == master_pass) || 
+                        (!license_key.is_empty() && auth == license_key);
+
+    if !is_authorized {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
