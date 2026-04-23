@@ -21,6 +21,7 @@ model License {
   blockedDomains     String[]    @default([])
   blockedApps        String[]    @default([])
   blockedCategories  String[]    @default([])
+  blockUsb           Boolean     @default(false)
 }
 
 model Device {

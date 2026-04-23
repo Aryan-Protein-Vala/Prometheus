@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       blockedDomains: license.blockedDomains || [],
       blockedApps: license.blockedApps || [],
-      blockedCategories: license.blockedCategories || []
+      blockedCategories: license.blockedCategories || [],
+      blockUsb: license.blockUsb || false
     });
 
   } catch (error) {

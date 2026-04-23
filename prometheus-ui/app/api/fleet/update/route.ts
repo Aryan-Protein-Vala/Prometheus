@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const key = searchParams.get('key');
     
     const body = await request.json();
-    const { blockedDomains, blockedApps, blockedCategories } = body;
+    const { blockedDomains, blockedApps, blockedCategories, blockUsb } = body;
 
     if (!key) {
       return NextResponse.json({ error: 'License key is required' }, { status: 400 });
@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
       data: {
         blockedDomains: blockedDomains || [],
         blockedApps: blockedApps || [],
-        blockedCategories: blockedCategories || []
+        blockedCategories: blockedCategories || [],
+        blockUsb: blockUsb || false
       }
     });
 
@@ -35,7 +36,8 @@ export async function POST(request: NextRequest) {
       policy: {
         blockedDomains: updatedLicense.blockedDomains,
         blockedApps: updatedLicense.blockedApps,
-        blockedCategories: updatedLicense.blockedCategories
+        blockedCategories: updatedLicense.blockedCategories,
+        blockUsb: updatedLicense.blockUsb
       }
     });
 

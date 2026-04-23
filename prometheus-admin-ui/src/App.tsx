@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Network, ListTree, X, Plus, Terminal, Monitor, LogOut, Ban, Dices, Users, Newspaper } from 'lucide-react';
+import { Shield, Network, ListTree, X, Plus, Terminal, Monitor, LogOut, Ban, Dices, Users, Newspaper, HardDrive } from 'lucide-react';
 
 const API_URL = '/api/config';
 
@@ -15,6 +15,7 @@ export default function App() {
   const [blockedDomains, setBlockedDomains] = useState<string[]>([]);
   const [blockedApps, setBlockedApps] = useState<string[]>([]);
   const [blockedCategories, setBlockedCategories] = useState<string[]>([]);
+  const [blockUsb, setBlockUsb] = useState<boolean>(false);
   const [newDomain, setNewDomain] = useState('');
   const [newApp, setNewApp] = useState('');
   const [loading, setLoading] = useState(true);
@@ -54,6 +55,7 @@ export default function App() {
         setBlockedDomains(data.blocked_domains || []);
         setBlockedApps(data.blocked_apps || []);
         setBlockedCategories(data.blocked_categories || []);
+        setBlockUsb(data.block_usb || false);
         setIsAuthorized(true);
       } else if (res.status === 401) {
         setIsAuthorized(false);
@@ -84,8 +86,9 @@ export default function App() {
     fetchConfig();
   }, []);
 
-  const updateConfig = async (domains: string[], apps: string[], categories?: string[]) => {
+  const updateConfig = async (domains: string[], apps: string[], categories?: string[], isUsbBlocked?: boolean) => {
     const cats = categories !== undefined ? categories : blockedCategories;
+    const usbBlock = isUsbBlocked !== undefined ? isUsbBlocked : blockUsb;
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
@@ -96,13 +99,15 @@ export default function App() {
         body: JSON.stringify({ 
           blocked_domains: domains,
           blocked_apps: apps,
-          blocked_categories: cats
+          blocked_categories: cats,
+          block_usb: usbBlock
         })
       });
       if (res.ok) {
         setBlockedDomains(domains);
         setBlockedApps(apps);
         setBlockedCategories(cats);
+        setBlockUsb(usbBlock);
       } else if (res.status === 401) {
         setIsAuthorized(false);
         setError("Session expired or invalid key.");
@@ -120,6 +125,10 @@ export default function App() {
       ? blockedCategories.filter(c => c !== categoryId)
       : [...blockedCategories, categoryId];
     updateConfig(blockedDomains, blockedApps, newCategories);
+  };
+
+  const toggleUsb = () => {
+    updateConfig(blockedDomains, blockedApps, blockedCategories, !blockUsb);
   };
 
   const sanitizeDomain = (input: string): string => {
@@ -283,7 +292,7 @@ export default function App() {
 
         <div className="p-8">
           <div className="text-[8px] font-mono text-neutral-600 uppercase tracking-widest leading-relaxed">
-            Enterprise Enforcement Protocol<br />V2.0.0 Category Engine
+            Enterprise Enforcement Protocol<br />V2.1.0 Hardware Engine
           </div>
         </div>
       </aside>
@@ -295,7 +304,7 @@ export default function App() {
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
               <header className="mb-12">
                 <h1 className="text-3xl font-light tracking-tight mb-2">Access Policies</h1>
-                <p className="text-neutral-500 text-sm">Synchronize web and application restrictions across the enterprise fleet.</p>
+                <p className="text-neutral-500 text-sm">Synchronize hardware, web, and application restrictions across the enterprise fleet.</p>
                 <div className="mt-4 p-3 border border-emerald-500/10 bg-emerald-500/5 flex items-center gap-3">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <p className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest">
@@ -303,6 +312,44 @@ export default function App() {
                   </p>
                 </div>
               </header>
+
+              {/* Hardware Security Section */}
+              <section className="mb-10">
+                <div className="flex items-center gap-2 mb-6">
+                  <HardDrive className="w-4 h-4 text-neutral-500" />
+                  <h2 className="text-xs font-mono uppercase tracking-[0.2em] text-neutral-400">Hardware Security</h2>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <button
+                    onClick={toggleUsb}
+                    className={`group relative p-6 border transition-all duration-300 flex items-center justify-between ${
+                      blockUsb
+                        ? 'border-red-500/30 bg-red-500/5 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                        : 'border-[#1a1a1a] bg-black/40 hover:border-[#333] hover:bg-white/[0.02]'
+                    }`}
+                  >
+                    <div className="flex flex-col items-start text-left">
+                      <div className="flex items-center gap-2 mb-2">
+                        <HardDrive className={`w-5 h-5 transition-colors duration-300 ${blockUsb ? 'text-red-400' : 'text-neutral-500'}`} />
+                        <span className={`text-xs font-mono uppercase tracking-widest ${blockUsb ? 'text-red-400' : 'text-white'}`}>USB Pendrive Lock</span>
+                      </div>
+                      <p className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider max-w-[200px]">
+                        Prevents unauthorized data exfiltration via external USB Mass Storage.
+                      </p>
+                    </div>
+
+                    {/* Big Premium Toggle Switch */}
+                    <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${
+                      blockUsb ? 'bg-red-500' : 'bg-neutral-800'
+                    }`}>
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300 ${
+                        blockUsb ? 'left-[28px]' : 'left-1'
+                      }`} />
+                    </div>
+                  </button>
+                </div>
+              </section>
 
               {/* Category Blocking Section */}
               <section className="mb-10">

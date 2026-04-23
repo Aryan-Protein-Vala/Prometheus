@@ -25,6 +25,8 @@ struct Config {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
     blocked_categories: Vec<String>,
+    #[serde(default)]
+    block_usb: bool,
     master_password: Option<String>,
     license_key: Option<String>,
 }
@@ -35,6 +37,8 @@ struct FleetSyncResponse {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
     blocked_categories: Vec<String>,
+    #[serde(default)]
+    block_usb: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +46,7 @@ struct ConfigResponse {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
     blocked_categories: Vec<String>,
+    block_usb: bool,
     security_logs: serde_json::Value,
 }
 
@@ -331,17 +336,28 @@ async fn start_cloud_sync(state: Arc<AppState>) {
                         config.blocked_domains = data.blocked_domains;
                         config.blocked_apps = data.blocked_apps;
                         config.blocked_categories = data.blocked_categories;
+                        config.block_usb = data.block_usb;
 
                         // Persist immediately
                         if let Ok(json) = serde_json::to_string_pretty(&*config) {
                             let _ = fs::write(&state.config_path, json);
                         }
                         
-                        println!("[CLOUD-SYNC] Policy Updated: {} domains, {} apps, {} categories.", 
+                        println!("[CLOUD-SYNC] Policy Updated: {} domains, {} apps, {} categories, USB Block: {}.", 
                             config.blocked_domains.len(), 
                             config.blocked_apps.len(),
-                            config.blocked_categories.len()
+                            config.blocked_categories.len(),
+                            config.block_usb
                         );
+
+                        // Enforce Windows Hardware Policy
+                        #[cfg(target_os = "windows")]
+                        {
+                            let status = if config.block_usb { "4" } else { "3" };
+                            let _ = std::process::Command::new("reg")
+                                .args(["add", r"HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR", "/v", "Start", "/t", "REG_DWORD", "/d", status, "/f"])
+                                .status();
+                        }
 
                         // Enforce network policy immediately (with categories)
                         let _ = sync_hosts_file(&config.blocked_domains, &config.blocked_categories).await;
@@ -388,6 +404,7 @@ async fn get_config(
         blocked_domains: config.blocked_domains.clone(),
         blocked_apps: config.blocked_apps.clone(),
         blocked_categories: config.blocked_categories.clone(),
+        block_usb: config.block_usb,
         security_logs,
     }))
 }
@@ -420,7 +437,8 @@ async fn update_config(
             .json(&serde_json::json!({
                 "blockedDomains": payload.blocked_domains,
                 "blockedApps": payload.blocked_apps,
-                "blockedCategories": payload.blocked_categories
+                "blockedCategories": payload.blocked_categories,
+                "blockUsb": payload.block_usb
             }))
             .send()
             .await;
@@ -439,6 +457,16 @@ async fn update_config(
     config.blocked_domains = payload.blocked_domains;
     config.blocked_apps = payload.blocked_apps;
     config.blocked_categories = payload.blocked_categories;
+    config.block_usb = payload.block_usb;
+
+    // Enforce Windows Hardware Policy immediately
+    #[cfg(target_os = "windows")]
+    {
+        let status = if config.block_usb { "4" } else { "3" };
+        let _ = std::process::Command::new("reg")
+            .args(["add", r"HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR", "/v", "Start", "/t", "REG_DWORD", "/d", status, "/f"])
+            .status();
+    }
 
     if let Some(parent) = state.config_path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -535,6 +563,45 @@ async fn start_app_killer(state: Arc<AppState>) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//                         HARDWARE SECURITY (USB POLICE)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async fn start_usb_killer(state: Arc<AppState>) {
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        
+        let block_usb = {
+            let config = state.config.lock().await;
+            config.block_usb
+        };
+        
+        if block_usb {
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(output) = std::process::Command::new("diskutil").arg("list").arg("external").output() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        if line.contains("/dev/disk") {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if let Some(disk) = parts.last() {
+                                if disk.starts_with("/dev/disk") {
+                                    println!("[HARDWARE-ENFORCER] USB Mass Storage Detected. Force unmounting: {}", disk);
+                                    let _ = std::process::Command::new("diskutil")
+                                        .arg("unmountDisk")
+                                        .arg("force")
+                                        .arg(disk)
+                                        .status();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn fix_file_permissions(path: &Path) {
     if !path.exists() { return; }
     
@@ -564,6 +631,7 @@ async fn main() {
                 blocked_domains: vec![], 
                 blocked_apps: vec![],
                 blocked_categories: vec![],
+                block_usb: false,
                 master_password: None,
                 license_key: None,
             })
@@ -572,6 +640,7 @@ async fn main() {
             blocked_domains: vec![], 
             blocked_apps: vec![],
             blocked_categories: vec![],
+            block_usb: false,
             master_password: None,
             license_key: None,
         }
@@ -595,9 +664,10 @@ async fn main() {
     fix_file_permissions(&config_path);
     fix_file_permissions(&logs_path);
 
-    // Spawn Cloud Sync and App Killer
+    // Spawn Cloud Sync, App Killer, and USB Killer
     tokio::spawn(start_cloud_sync(state.clone()));
     tokio::spawn(start_app_killer(state.clone()));
+    tokio::spawn(start_usb_killer(state.clone()));
 
     let cors = tower_http::cors::CorsLayer::new()
         .allow_origin(tower_http::cors::Any) // Safe for local-only binary
