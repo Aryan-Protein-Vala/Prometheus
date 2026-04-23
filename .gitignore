@@ -34,3 +34,5 @@ yarn-error.log*
 
 # Generated files
 forward.md
+
+prometheus_b2b_strategy.md

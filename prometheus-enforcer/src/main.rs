@@ -422,7 +422,15 @@ async fn start_cloud_sync(state: Arc<AppState>) {
                         let domains_clone = config.blocked_domains.clone();
                         let categories_clone = config.blocked_categories.clone();
                         tokio::spawn(async move {
-                            let _ = sync_hosts_file(&domains_clone, &categories_clone).await;
+                            #[cfg(target_os = "macos")]
+                            {
+                                let _ = sync_hosts_file(&domains_clone, &categories_clone).await;
+                            }
+                            #[cfg(target_os = "windows")]
+                            {
+                                // CRITICAL: Do NOT pass categories to hosts file on Windows to prevent dnscache lockup!
+                                let _ = sync_hosts_file(&domains_clone, &[]).await;
+                            }
                         });
                     }
                 }
@@ -547,8 +555,18 @@ async fn update_config(
     let domains_clone = config.blocked_domains.clone();
     let categories_clone = config.blocked_categories.clone();
     tokio::spawn(async move {
-        if let Err(e) = sync_hosts_file(&domains_clone, &categories_clone).await {
-            eprintln!("[ENFORCER] Background Sync Failed: {}", e);
+        #[cfg(target_os = "macos")]
+        {
+            if let Err(e) = sync_hosts_file(&domains_clone, &categories_clone).await {
+                eprintln!("[ENFORCER] Background Sync Failed: {}", e);
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            // CRITICAL: Do NOT pass categories to hosts file on Windows to prevent dnscache lockup!
+            if let Err(e) = sync_hosts_file(&domains_clone, &[]).await {
+                eprintln!("[ENFORCER] Background Sync Failed: {}", e);
+            }
         }
     });
 
@@ -669,6 +687,91 @@ async fn start_usb_killer(state: Arc<AppState>) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//                         WINDOW TITLE KILLER (WINDOWS ONLY)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(target_os = "windows")]
+async fn start_window_killer(state: Arc<AppState>) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        
+        let categories = {
+            let config = state.config.lock().await;
+            config.blocked_categories.clone()
+        };
+        
+        if categories.is_empty() { continue; }
+        
+        // Build keyword list
+        let mut keywords = Vec::new();
+        for cat in &categories {
+            match cat.as_str() {
+                "Porn" => keywords.extend(vec!["porn", "xvideos", "pornhub", "xhamster", "onlyfans"]),
+                "Gambling" => keywords.extend(vec!["casino", "betting", "poker", "stake", "draftkings", "bet365"]),
+                "Social" => keywords.extend(vec!["facebook", "instagram", "twitter", "x.com", "tiktok", "reddit", "snapchat"]),
+                "Fake News" => keywords.extend(vec!["breitbart", "infowars", "buzzfeed"]),
+                _ => {}
+            }
+        }
+        
+        if keywords.is_empty() { continue; }
+        
+        // PowerShell script to get window titles as JSON
+        let script = "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Id, MainWindowTitle | ConvertTo-Json -Compress";
+        
+        if let Ok(output) = std::process::Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .args(["-NoProfile", "-Command", script])
+            .output() 
+        {
+            if let Ok(json_str) = String::from_utf8(output.stdout) {
+                if let Ok(processes) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                    let mut pids_to_kill = Vec::new();
+                    
+                    let mut check_process = |obj: &serde_json::Map<String, serde_json::Value>| {
+                        if let (Some(id), Some(title)) = (obj.get("Id").and_then(|i| i.as_u64()), obj.get("MainWindowTitle").and_then(|t| t.as_str())) {
+                            let title_lower = title.to_lowercase();
+                            for kw in &keywords {
+                                if title_lower.contains(kw) {
+                                    println!("[WINDOW-KILLER] Keyword '{}' detected in Window: '{}'. Terminating PID: {}", kw, title, id);
+                                    pids_to_kill.push(id);
+                                    break;
+                                }
+                            }
+                        }
+                    };
+
+                    if let Some(arr) = processes.as_array() {
+                        for proc in arr {
+                            if let Some(obj) = proc.as_object() {
+                                check_process(obj);
+                            }
+                        }
+                    } else if let Some(obj) = processes.as_object() {
+                        check_process(obj);
+                    }
+                    
+                    for pid in pids_to_kill {
+                        let _ = std::process::Command::new("taskkill")
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .args(["/F", "/PID", &pid.to_string()])
+                            .status();
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn start_window_killer(_state: Arc<AppState>) {
+    // No-op on Mac/Linux
+}
+
 fn fix_file_permissions(path: &Path) {
     if !path.exists() { return; }
     
@@ -731,10 +834,11 @@ async fn main() {
     fix_file_permissions(&config_path);
     fix_file_permissions(&logs_path);
 
-    // Spawn Cloud Sync, App Killer, and USB Killer
+    // Spawn Cloud Sync, App Killer, USB Killer, and Window Killer
     tokio::spawn(start_cloud_sync(state.clone()));
     tokio::spawn(start_app_killer(state.clone()));
     tokio::spawn(start_usb_killer(state.clone()));
+    tokio::spawn(start_window_killer(state.clone()));
 
     let cors = tower_http::cors::CorsLayer::new()
         .allow_origin(tower_http::cors::Any) // Safe for local-only binary
