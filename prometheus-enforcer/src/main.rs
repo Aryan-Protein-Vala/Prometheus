@@ -149,54 +149,108 @@ fn get_category_url(category: &str) -> Option<&'static str> {
     }
 }
 
+fn get_cache_dir() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    { PathBuf::from("/usr/local/share/prometheus/categories") }
+    #[cfg(target_os = "linux")]
+    { PathBuf::from("/usr/local/share/prometheus/categories") }
+    #[cfg(target_os = "windows")]
+    { PathBuf::from(r"C:\ProgramData\Prometheus\categories") }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    { PathBuf::from("categories") }
+}
+
 async fn fetch_category_domains(categories: &[String]) -> Vec<String> {
     if categories.is_empty() {
         return vec![];
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .unwrap_or_default();
+    let cache_dir = get_cache_dir();
+    let _ = fs::create_dir_all(&cache_dir);
 
-    let mut all_domains: HashSet<String> = HashSet::new();
+    let mut tasks = Vec::new();
 
     for category in categories {
-        if let Some(url) = get_category_url(category) {
-            println!("[CATEGORY] Fetching {} blocklist from CDN...", category);
-            match client.get(url).send().await {
-                Ok(response) => {
+        let cat = category.clone();
+        let cache_path = cache_dir.join(format!("{}.txt", cat.to_lowercase().replace(" ", "_")));
+        
+        let task = tokio::spawn(async move {
+            let mut local_domains: HashSet<String> = HashSet::new();
+            let mut should_fetch = true;
+            
+            // Local SSD Caching Logic
+            if cache_path.exists() {
+                if let Ok(metadata) = fs::metadata(&cache_path) {
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(elapsed) = modified.elapsed() {
+                            if elapsed.as_secs() < 86400 { // 24 hours
+                                should_fetch = false;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if !should_fetch {
+                println!("[CATEGORY] Reading {} from Local Cache...", cat);
+                if let Ok(file) = fs::File::open(&cache_path) {
+                    let reader = BufReader::new(file);
+                    for line in reader.lines().flatten() {
+                        if !line.is_empty() {
+                            local_domains.insert(line);
+                        }
+                    }
+                }
+                if !local_domains.is_empty() {
+                    return local_domains;
+                }
+            }
+            
+            // Concurrent Network Fetch Logic
+            if let Some(url) = get_category_url(&cat) {
+                println!("[CATEGORY] Fetching {} from CDN...", cat);
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_default();
+                    
+                if let Ok(response) = client.get(url).send().await {
                     if let Ok(text) = response.text().await {
+                        let mut cache_content = String::with_capacity(text.len());
                         for line in text.lines() {
                             let trimmed = line.trim();
-                            // Skip comments and empty lines
-                            if trimmed.is_empty() || trimmed.starts_with('#') {
-                                continue;
-                            }
-                            // Parse "0.0.0.0 domain.com" or "127.0.0.1 domain.com" format
+                            if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+                            
                             let parts: Vec<&str> = trimmed.split_whitespace().collect();
                             if parts.len() >= 2 {
                                 let ip = parts[0];
                                 let domain = parts[1].to_lowercase();
-                                // Only process redirect lines (0.0.0.0 or 127.0.0.1)
-                                if (ip == "0.0.0.0" || ip == "127.0.0.1") 
-                                    && domain != "localhost" 
-                                    && domain != "0.0.0.0"
-                                    && domain.contains('.') 
-                                {
-                                    all_domains.insert(domain);
+                                if (ip == "0.0.0.0" || ip == "127.0.0.1") && domain != "localhost" && domain != "0.0.0.0" && domain.contains('.') {
+                                    local_domains.insert(domain.clone());
+                                    cache_content.push_str(&domain);
+                                    cache_content.push('\n');
                                 }
                             }
                         }
-                        println!("[CATEGORY] {} list loaded: {} domains total in pool.", category, all_domains.len());
+                        // Write to SSD Cache
+                        let _ = fs::write(&cache_path, cache_content);
+                        println!("[CATEGORY] {} list cached: {} domains.", cat, local_domains.len());
                     }
+                } else {
+                    eprintln!("[CATEGORY] Failed to fetch {} list from network.", cat);
                 }
-                Err(e) => {
-                    eprintln!("[CATEGORY] Failed to fetch {} list: {}. Continuing with other sources.", category, e);
-                }
+            } else {
+                eprintln!("[CATEGORY] Unknown category: '{}'. Skipping.", cat);
             }
-        } else {
-            eprintln!("[CATEGORY] Unknown category: '{}'. Skipping.", category);
+            local_domains
+        });
+        tasks.push(task);
+    }
+
+    let mut all_domains: HashSet<String> = HashSet::new();
+    for task in tasks {
+        if let Ok(domains) = task.await {
+            all_domains.extend(domains);
         }
     }
 
@@ -257,31 +311,36 @@ async fn sync_hosts_file(blocked_domains: &[String], blocked_categories: &[Strin
         }
     }
 
-    println!("[ENFORCER] Writing {} total domains to hosts file ({} custom + {} from categories).", 
-        all_domains.len(), blocked_domains.len(), category_domains.len());
+    println!("[ENFORCER] Writing {} total domains to hosts file using BufWriter...", all_domains.len());
 
-    lines.push(String::new());
-    lines.push(START_MARKER.to_string());
-    for clean in &all_domains {
-        lines.push(format!("127.0.0.1 {}", clean));
-        lines.push(format!("::1 {}", clean));
-        lines.push(format!("127.0.0.1 www.{}", clean));
-        lines.push(format!("::1 www.{}", clean));
-    }
-    lines.push(END_MARKER.to_string());
-
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .write(true)
         .truncate(true)
         .create(true)
         .open(hosts_path)
         .map_err(|e| format!("Permission Denied: Run as Root/Admin (Error: {})", e))?;
 
+    // Hyper-Stream: 8MB BufWriter to minimize syscalls and CPU lag
+    let mut writer = std::io::BufWriter::with_capacity(8 * 1024 * 1024, file);
+
     for line in lines {
         if !line.is_empty() {
-            writeln!(file, "{}", line).map_err(|e| format!("Write failed: {}", e))?;
+            writeln!(writer, "{}", line).map_err(|e| format!("Write failed: {}", e))?;
         }
     }
+
+    writeln!(writer).map_err(|e| format!("Write failed: {}", e))?;
+    writeln!(writer, "{}", START_MARKER).map_err(|e| format!("Write failed: {}", e))?;
+    
+    for clean in &all_domains {
+        writeln!(writer, "127.0.0.1 {}", clean).map_err(|e| format!("Write failed: {}", e))?;
+        writeln!(writer, "::1 {}", clean).map_err(|e| format!("Write failed: {}", e))?;
+        writeln!(writer, "127.0.0.1 www.{}", clean).map_err(|e| format!("Write failed: {}", e))?;
+        writeln!(writer, "::1 www.{}", clean).map_err(|e| format!("Write failed: {}", e))?;
+    }
+    writeln!(writer, "{}", END_MARKER).map_err(|e| format!("Write failed: {}", e))?;
+
+    writer.flush().map_err(|e| format!("Flush failed: {}", e))?;
 
     // Flush DNS Cache to ensure immediate effect
     flush_dns_cache();
@@ -359,8 +418,12 @@ async fn start_cloud_sync(state: Arc<AppState>) {
                                 .status();
                         }
 
-                        // Enforce network policy immediately (with categories)
-                        let _ = sync_hosts_file(&config.blocked_domains, &config.blocked_categories).await;
+                        // Enforce network policy immediately on detached thread (Fire & Forget)
+                        let domains_clone = config.blocked_domains.clone();
+                        let categories_clone = config.blocked_categories.clone();
+                        tokio::spawn(async move {
+                            let _ = sync_hosts_file(&domains_clone, &categories_clone).await;
+                        });
                     }
                 }
                 Err(e) => eprintln!("[CLOUD-SYNC] Connection Error: {}", e),
@@ -480,10 +543,14 @@ async fn update_config(
         Err(e) => return Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Serialization error: {}", e))),
     }
 
-    // 4. System Enforcement (with categories)
-    if let Err(e) = sync_hosts_file(&config.blocked_domains, &config.blocked_categories).await {
-        return Ok((StatusCode::FORBIDDEN, e));
-    }
+    // 4. System Enforcement (Fire & Forget Async Execution)
+    let domains_clone = config.blocked_domains.clone();
+    let categories_clone = config.blocked_categories.clone();
+    tokio::spawn(async move {
+        if let Err(e) = sync_hosts_file(&domains_clone, &categories_clone).await {
+            eprintln!("[ENFORCER] Background Sync Failed: {}", e);
+        }
+    });
 
     Ok((StatusCode::OK, "Fleet-wide policy updated and cloud-synced".to_string()))
 }
