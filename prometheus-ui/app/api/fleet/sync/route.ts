@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
     // 2. Return Exact Sync Structure (Null-Safe)
     return NextResponse.json({
       blockedDomains: license.blockedDomains || [],
-      blockedApps: license.blockedApps || []
+      blockedApps: license.blockedApps || [],
+      blockedCategories: license.blockedCategories || []
     });
 
   } catch (error) {

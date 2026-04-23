@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const key = searchParams.get('key');
     
     const body = await request.json();
-    const { blockedDomains, blockedApps } = body;
+    const { blockedDomains, blockedApps, blockedCategories } = body;
 
     if (!key) {
       return NextResponse.json({ error: 'License key is required' }, { status: 400 });
@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
       where: { key: key },
       data: {
         blockedDomains: blockedDomains || [],
-        blockedApps: blockedApps || []
+        blockedApps: blockedApps || [],
+        blockedCategories: blockedCategories || []
       }
     });
 
@@ -33,7 +34,8 @@ export async function POST(request: NextRequest) {
       message: 'Cloud Policy Updated. All fleet instances will synchronize automatically.',
       policy: {
         blockedDomains: updatedLicense.blockedDomains,
-        blockedApps: updatedLicense.blockedApps
+        blockedApps: updatedLicense.blockedApps,
+        blockedCategories: updatedLicense.blockedCategories
       }
     });
 

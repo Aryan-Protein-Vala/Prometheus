@@ -18,8 +18,9 @@ model License {
   updatedAt     DateTime     @updatedAt
   devices       Device[]
   fleetPolicy   FleetPolicy?
-  blockedDomains String[]    @default([])
-  blockedApps    String[]    @default([])
+  blockedDomains     String[]    @default([])
+  blockedApps        String[]    @default([])
+  blockedCategories  String[]    @default([])
 }
 
 model Device {

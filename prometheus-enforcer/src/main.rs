@@ -8,6 +8,7 @@ use axum::{
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     fs::{self, OpenOptions},
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
@@ -23,6 +24,7 @@ struct Assets;
 struct Config {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
+    blocked_categories: Vec<String>,
     master_password: Option<String>,
     license_key: Option<String>,
 }
@@ -32,12 +34,14 @@ struct Config {
 struct FleetSyncResponse {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
+    blocked_categories: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct ConfigResponse {
     blocked_domains: Vec<String>,
     blocked_apps: Vec<String>,
+    blocked_categories: Vec<String>,
     security_logs: serde_json::Value,
 }
 
@@ -126,7 +130,79 @@ fn get_license_key() -> Option<String> {
     None
 }
 
-async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
+// ═══════════════════════════════════════════════════════════════════════════
+//                CATEGORY DOMAIN FETCHER (StevenBlack Integration)
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn get_category_url(category: &str) -> Option<&'static str> {
+    match category {
+        "Porn" => Some("https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts"),
+        "Gambling" => Some("https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling/hosts"),
+        "Social" => Some("https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/social/hosts"),
+        "Fake News" => Some("https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/fakenews/hosts"),
+        _ => None,
+    }
+}
+
+async fn fetch_category_domains(categories: &[String]) -> Vec<String> {
+    if categories.is_empty() {
+        return vec![];
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+
+    let mut all_domains: HashSet<String> = HashSet::new();
+
+    for category in categories {
+        if let Some(url) = get_category_url(category) {
+            println!("[CATEGORY] Fetching {} blocklist from CDN...", category);
+            match client.get(url).send().await {
+                Ok(response) => {
+                    if let Ok(text) = response.text().await {
+                        for line in text.lines() {
+                            let trimmed = line.trim();
+                            // Skip comments and empty lines
+                            if trimmed.is_empty() || trimmed.starts_with('#') {
+                                continue;
+                            }
+                            // Parse "0.0.0.0 domain.com" or "127.0.0.1 domain.com" format
+                            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                let ip = parts[0];
+                                let domain = parts[1].to_lowercase();
+                                // Only process redirect lines (0.0.0.0 or 127.0.0.1)
+                                if (ip == "0.0.0.0" || ip == "127.0.0.1") 
+                                    && domain != "localhost" 
+                                    && domain != "0.0.0.0"
+                                    && domain.contains('.') 
+                                {
+                                    all_domains.insert(domain);
+                                }
+                            }
+                        }
+                        println!("[CATEGORY] {} list loaded: {} domains total in pool.", category, all_domains.len());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[CATEGORY] Failed to fetch {} list: {}. Continuing with other sources.", category, e);
+                }
+            }
+        } else {
+            eprintln!("[CATEGORY] Unknown category: '{}'. Skipping.", category);
+        }
+    }
+
+    all_domains.into_iter().collect()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//                         HOSTS FILE SYNC ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+async fn sync_hosts_file(blocked_domains: &[String], blocked_categories: &[String]) -> Result<(), String> {
     let hosts_path = Path::new(HOSTS_FILE);
     let mut lines = Vec::new();
 
@@ -152,20 +228,40 @@ async fn sync_hosts_file(blocked_domains: &[String]) -> Result<(), String> {
         }
     }
 
-    lines.push(String::new());
-    lines.push(START_MARKER.to_string());
+    // Fetch category domains from StevenBlack CDN (graceful fallback on failure)
+    let category_domains = fetch_category_domains(blocked_categories).await;
+
+    // Merge custom domains + category domains, deduplicate
+    let mut all_domains: HashSet<String> = HashSet::new();
     for domain in blocked_domains {
         let mut clean = domain.trim().to_lowercase();
-        // Strip www. prefix if it exists to normalize
         if clean.starts_with("www.") {
             clean = clean.strip_prefix("www.").unwrap_or(&clean).to_string();
         }
-        
         if !clean.is_empty() {
-            // Using 127.0.0.1 for maximum cross-browser compatibility
-            lines.push(format!("127.0.0.1 {}", clean));
-            lines.push(format!("127.0.0.1 www.{}", clean));
+            all_domains.insert(clean);
         }
+    }
+    for domain in &category_domains {
+        let mut clean = domain.trim().to_lowercase();
+        if clean.starts_with("www.") {
+            clean = clean.strip_prefix("www.").unwrap_or(&clean).to_string();
+        }
+        if !clean.is_empty() {
+            all_domains.insert(clean);
+        }
+    }
+
+    println!("[ENFORCER] Writing {} total domains to hosts file ({} custom + {} from categories).", 
+        all_domains.len(), blocked_domains.len(), category_domains.len());
+
+    lines.push(String::new());
+    lines.push(START_MARKER.to_string());
+    for clean in &all_domains {
+        lines.push(format!("127.0.0.1 {}", clean));
+        lines.push(format!("::1 {}", clean));
+        lines.push(format!("127.0.0.1 www.{}", clean));
+        lines.push(format!("::1 www.{}", clean));
     }
     lines.push(END_MARKER.to_string());
 
@@ -211,6 +307,10 @@ fn flush_dns_cache() {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//                         CLOUD SYNC ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
 async fn start_cloud_sync(state: Arc<AppState>) {
     let client = reqwest::Client::new();
     
@@ -230,19 +330,21 @@ async fn start_cloud_sync(state: Arc<AppState>) {
                         // Apply Cloud Policy
                         config.blocked_domains = data.blocked_domains;
                         config.blocked_apps = data.blocked_apps;
+                        config.blocked_categories = data.blocked_categories;
 
                         // Persist immediately
                         if let Ok(json) = serde_json::to_string_pretty(&*config) {
                             let _ = fs::write(&state.config_path, json);
                         }
                         
-                        println!("[CLOUD-SYNC] Policy Updated: {} domains, {} apps.", 
+                        println!("[CLOUD-SYNC] Policy Updated: {} domains, {} apps, {} categories.", 
                             config.blocked_domains.len(), 
-                            config.blocked_apps.len()
+                            config.blocked_apps.len(),
+                            config.blocked_categories.len()
                         );
 
-                        // Enforce network policy immediately
-                        let _ = sync_hosts_file(&config.blocked_domains).await;
+                        // Enforce network policy immediately (with categories)
+                        let _ = sync_hosts_file(&config.blocked_domains, &config.blocked_categories).await;
                     }
                 }
                 Err(e) => eprintln!("[CLOUD-SYNC] Connection Error: {}", e),
@@ -250,6 +352,10 @@ async fn start_cloud_sync(state: Arc<AppState>) {
         }
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//                         API HANDLERS
+// ═══════════════════════════════════════════════════════════════════════════
 
 async fn get_config(
     headers: HeaderMap,
@@ -281,6 +387,7 @@ async fn get_config(
     Ok(Json(ConfigResponse {
         blocked_domains: config.blocked_domains.clone(),
         blocked_apps: config.blocked_apps.clone(),
+        blocked_categories: config.blocked_categories.clone(),
         security_logs,
     }))
 }
@@ -312,7 +419,8 @@ async fn update_config(
         let cloud_update = client.post(&url)
             .json(&serde_json::json!({
                 "blockedDomains": payload.blocked_domains,
-                "blockedApps": payload.blocked_apps
+                "blockedApps": payload.blocked_apps,
+                "blockedCategories": payload.blocked_categories
             }))
             .send()
             .await;
@@ -330,6 +438,7 @@ async fn update_config(
     // 3. Local Commit
     config.blocked_domains = payload.blocked_domains;
     config.blocked_apps = payload.blocked_apps;
+    config.blocked_categories = payload.blocked_categories;
 
     if let Some(parent) = state.config_path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -343,13 +452,17 @@ async fn update_config(
         Err(e) => return Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Serialization error: {}", e))),
     }
 
-    // 4. System Enforcement
-    if let Err(e) = sync_hosts_file(&config.blocked_domains).await {
+    // 4. System Enforcement (with categories)
+    if let Err(e) = sync_hosts_file(&config.blocked_domains, &config.blocked_categories).await {
         return Ok((StatusCode::FORBIDDEN, e));
     }
 
     Ok((StatusCode::OK, "Fleet-wide policy updated and cloud-synced".to_string()))
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//                         STATIC FILE SERVER & HEALTH
+// ═══════════════════════════════════════════════════════════════════════════
 
 async fn static_handler(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
@@ -382,6 +495,10 @@ async fn static_handler(uri: Uri) -> impl IntoResponse {
 async fn health_check() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({"status": "active"})))
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//                         APP KILLER DAEMON
+// ═══════════════════════════════════════════════════════════════════════════
 
 async fn start_app_killer(state: Arc<AppState>) {
     use sysinfo::{System, ProcessesToUpdate};
@@ -429,6 +546,10 @@ fn fix_file_permissions(path: &Path) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//                         MAIN ENTRY POINT
+// ═══════════════════════════════════════════════════════════════════════════
+
 #[tokio::main]
 async fn main() {
     let config_path = get_config_path();
@@ -442,6 +563,7 @@ async fn main() {
             .unwrap_or(Config { 
                 blocked_domains: vec![], 
                 blocked_apps: vec![],
+                blocked_categories: vec![],
                 master_password: None,
                 license_key: None,
             })
@@ -449,6 +571,7 @@ async fn main() {
         Config { 
             blocked_domains: vec![], 
             blocked_apps: vec![],
+            blocked_categories: vec![],
             master_password: None,
             license_key: None,
         }
@@ -513,7 +636,7 @@ async fn main() {
     std_listener.set_nonblocking(true).expect("Failed to set non-blocking");
     let listener = tokio::net::TcpListener::from_std(std_listener).expect("Failed to convert to tokio listener");
 
-    println!("PROMETHEUS ENFORCER ACTIVE: http://localhost:4444 (Hardened Dual-Stack)");
+    println!("PROMETHEUS ENFORCER ACTIVE: http://localhost:4444 (Category Engine v2.0)");
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("SERVER ERROR: {}", e);
     }

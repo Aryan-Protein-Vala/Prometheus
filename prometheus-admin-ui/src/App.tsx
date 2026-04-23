@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Shield, Network, ListTree, X, Plus, Terminal, Monitor, LogOut } from 'lucide-react';
+import { Shield, Network, ListTree, X, Plus, Terminal, Monitor, LogOut, Ban, Dices, Users, Newspaper } from 'lucide-react';
 
 const API_URL = '/api/config';
+
+const AVAILABLE_CATEGORIES = [
+  { id: 'Porn', label: 'Adult Content', icon: Ban, color: 'rose' },
+  { id: 'Gambling', label: 'Gambling', icon: Dices, color: 'amber' },
+  { id: 'Social', label: 'Social Media', icon: Users, color: 'sky' },
+  { id: 'Fake News', label: 'Fake News', icon: Newspaper, color: 'purple' },
+] as const;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'access' | 'logs'>('access');
   const [blockedDomains, setBlockedDomains] = useState<string[]>([]);
   const [blockedApps, setBlockedApps] = useState<string[]>([]);
+  const [blockedCategories, setBlockedCategories] = useState<string[]>([]);
   const [newDomain, setNewDomain] = useState('');
   const [newApp, setNewApp] = useState('');
   const [loading, setLoading] = useState(true);
@@ -45,6 +53,7 @@ export default function App() {
         const data = await res.json();
         setBlockedDomains(data.blocked_domains || []);
         setBlockedApps(data.blocked_apps || []);
+        setBlockedCategories(data.blocked_categories || []);
         setIsAuthorized(true);
       } else if (res.status === 401) {
         setIsAuthorized(false);
@@ -75,7 +84,8 @@ export default function App() {
     fetchConfig();
   }, []);
 
-  const updateConfig = async (domains: string[], apps: string[]) => {
+  const updateConfig = async (domains: string[], apps: string[], categories?: string[]) => {
+    const cats = categories !== undefined ? categories : blockedCategories;
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
@@ -85,12 +95,14 @@ export default function App() {
         },
         body: JSON.stringify({ 
           blocked_domains: domains,
-          blocked_apps: apps 
+          blocked_apps: apps,
+          blocked_categories: cats
         })
       });
       if (res.ok) {
         setBlockedDomains(domains);
         setBlockedApps(apps);
+        setBlockedCategories(cats);
       } else if (res.status === 401) {
         setIsAuthorized(false);
         setError("Session expired or invalid key.");
@@ -101,6 +113,13 @@ export default function App() {
     } catch (err) {
       alert("Network Error: Could not reach daemon.");
     }
+  };
+
+  const toggleCategory = (categoryId: string) => {
+    const newCategories = blockedCategories.includes(categoryId)
+      ? blockedCategories.filter(c => c !== categoryId)
+      : [...blockedCategories, categoryId];
+    updateConfig(blockedDomains, blockedApps, newCategories);
   };
 
   const sanitizeDomain = (input: string): string => {
@@ -213,6 +232,13 @@ export default function App() {
     );
   }
 
+  const colorMap: Record<string, { active: string; border: string; bg: string; text: string; glow: string }> = {
+    rose:   { active: 'bg-rose-500',   border: 'border-rose-500/30',   bg: 'bg-rose-500/5',   text: 'text-rose-400',   glow: 'shadow-[0_0_12px_rgba(244,63,94,0.3)]' },
+    amber:  { active: 'bg-amber-500',  border: 'border-amber-500/30',  bg: 'bg-amber-500/5',  text: 'text-amber-400',  glow: 'shadow-[0_0_12px_rgba(245,158,11,0.3)]' },
+    sky:    { active: 'bg-sky-500',    border: 'border-sky-500/30',    bg: 'bg-sky-500/5',    text: 'text-sky-400',    glow: 'shadow-[0_0_12px_rgba(14,165,233,0.3)]' },
+    purple: { active: 'bg-purple-500', border: 'border-purple-500/30', bg: 'bg-purple-500/5', text: 'text-purple-400', glow: 'shadow-[0_0_12px_rgba(168,85,247,0.3)]' },
+  };
+
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white">
       {/* Pulse System Indicator */}
@@ -257,7 +283,7 @@ export default function App() {
 
         <div className="p-8">
           <div className="text-[8px] font-mono text-neutral-600 uppercase tracking-widest leading-relaxed">
-            Enterprise Enforcement Protocol<br />V1.0.0 Stable
+            Enterprise Enforcement Protocol<br />V2.0.0 Category Engine
           </div>
         </div>
       </aside>
@@ -277,6 +303,54 @@ export default function App() {
                   </p>
                 </div>
               </header>
+
+              {/* Category Blocking Section */}
+              <section className="mb-10">
+                <div className="flex items-center gap-2 mb-6">
+                  <Ban className="w-4 h-4 text-neutral-500" />
+                  <h2 className="text-xs font-mono uppercase tracking-[0.2em] text-neutral-400">Category Filters</h2>
+                  <span className="ml-auto text-[8px] font-mono text-neutral-600 uppercase tracking-widest">
+                    {blockedCategories.length} of {AVAILABLE_CATEGORIES.length} Active
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {AVAILABLE_CATEGORIES.map((cat) => {
+                    const isActive = blockedCategories.includes(cat.id);
+                    const colors = colorMap[cat.color];
+                    const Icon = cat.icon;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => toggleCategory(cat.id)}
+                        className={`group relative p-4 border transition-all duration-300 ${
+                          isActive
+                            ? `${colors.border} ${colors.bg} ${colors.glow}`
+                            : 'border-[#1a1a1a] bg-black/40 hover:border-[#333] hover:bg-white/[0.02]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <Icon className={`w-4 h-4 transition-colors duration-300 ${isActive ? colors.text : 'text-neutral-600'}`} />
+                          {/* Toggle Switch */}
+                          <div className={`w-8 h-4 rounded-full relative transition-all duration-300 ${
+                            isActive ? colors.active : 'bg-neutral-800'
+                          }`}>
+                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 ${
+                              isActive ? 'left-[18px]' : 'left-0.5'
+                            }`} />
+                          </div>
+                        </div>
+                        <p className={`text-[10px] font-mono uppercase tracking-widest text-left transition-colors duration-300 ${
+                          isActive ? colors.text : 'text-neutral-500'
+                        }`}>{cat.label}</p>
+                        <p className={`text-[8px] font-mono uppercase tracking-wider mt-1 transition-colors duration-300 ${
+                          isActive ? 'text-white/40' : 'text-neutral-700'
+                        }`}>{isActive ? 'Enforcing' : 'Disabled'}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
 
               <div className="grid md:grid-cols-2 gap-8">
                 {/* Network Blocklist */}
