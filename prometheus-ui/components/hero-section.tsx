@@ -102,7 +102,7 @@ export function HeroSection() {
         </h1>
         <div className="relative mt-4 inline-block">
           <h1 className="relative z-10 text-4xl font-medium tracking-tight md:text-6xl lg:text-7xl text-foreground">
-            <FadeInText text="Corporate Security Enforcer." delay={400} />
+            <FadeInText text="App & Web Blocker." delay={400} />
           </h1>
           {/* Animated underline accent */}
           <div className="absolute -bottom-2 left-0 h-px w-full overflow-hidden md:-bottom-3">
@@ -119,7 +119,7 @@ export function HeroSection() {
 
       {/* Subhead */}
       <p className="mb-12 max-w-3xl text-center text-lg text-muted-foreground md:text-xl leading-relaxed">
-        <FadeInText text="Clean systems, audit security risks (exposed .env files), and enforce corporate network blocklists offline. Engineered for IT Managers and Founders." delay={600} />
+        <FadeInText text="Clean systems, audit security risks (exposed .env files), and block apps and websites offline. Engineered for productivity and focus." delay={600} />
       </p>
 
       {/* Platform Selection */}
@@ -141,10 +141,11 @@ export function HeroSection() {
 
           {/* Windows */}
           <button
-            onClick={() => setSelectedPlatform("windows")}
-            className="cursor-pointer px-4 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-medium tracking-wide text-muted-foreground border border-border/50 bg-transparent transition-all duration-300 hover:border-foreground/30 hover:text-foreground hover:bg-foreground/5 hover:scale-[1.02] active:scale-[0.98]"
+            disabled
+            title="Still in development"
+            className="cursor-not-allowed px-4 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-medium tracking-wide text-muted-foreground/50 border border-border/20 bg-transparent"
           >
-            Windows
+            Windows (Still in development)
           </button>
 
           <span className="text-muted-foreground/30 mx-1 select-none hidden sm:inline">/</span>

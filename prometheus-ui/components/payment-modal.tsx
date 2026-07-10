@@ -175,12 +175,12 @@ export function PaymentModal({ open, onOpenChange, amount, planName }: PaymentMo
                             <div className="space-y-2">
                                 <Label htmlFor="email" className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
                                     <Mail className="h-3 w-3" />
-                                    Corporate Email
+                                    Account Email
                                 </Label>
                                 <Input
                                     id="email"
                                     type="email"
-                                    placeholder="it-manager@company.com"
+                                    placeholder="your@email.com"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required

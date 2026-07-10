@@ -31,7 +31,7 @@ const engines = [
     id: "SA-01",
     name: "Security Audit",
     codename: "PROTOCOL-SA",
-    description: "Deep scans for exposed .env, .pem, and SSH keys. 100% offline detection for corporate compliance.",
+    description: "Deep scans for exposed .env, .pem, and SSH keys. 100% offline detection for compliance.",
     status: "ACTIVE",
     statusColor: "bg-green-500",
   },
