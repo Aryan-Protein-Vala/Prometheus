@@ -32,7 +32,7 @@ curl -sL https://prometheus-cleaner.vercel.app/install.sh | bash
 ### Windows (PowerShell as Admin)
 
 ```powershell
-irm https://prometheus-cleaner.vercel.app/install.ps1 | iex
+Coming Soon...
 ```
 
 After installation, run:
